@@ -1,0 +1,32 @@
+name: Bug Report
+description: Create a bug report
+type: Bug
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: Describe what you observed.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behaviour
+      description: Describe what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the issue?
+      placeholder: |
+        1. ...
+        2. ...
+  - type: input
+    attributes:
+      label: zabbix-argus-glue version
+  - type: input
+    attributes:
+      label: Python version
+  - type: input
+    attributes:
+      label: Zabbix version

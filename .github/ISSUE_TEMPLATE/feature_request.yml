@@ -1,0 +1,20 @@
+name: Feature Request
+description: Suggest an idea for improving zabbix-argus-glue
+type: Feature
+body:
+  - type: textarea
+    attributes:
+      label: Is your proposal related to a problem?
+      description: Describe the problem or limitation.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Desired solution
+      description: Describe what you would like to happen.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternative solutions you have considered.
