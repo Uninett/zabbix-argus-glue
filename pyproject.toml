@@ -27,7 +27,7 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp",
-    "argus-api-client",
+    "argus-api-client @ git+https://github.com/Uninett/pyargus.git@feature/async",
     "pydantic>=2",
     "zabbix-utils[async]",
 ]
@@ -49,6 +49,7 @@ test = [
     "pytest>=7",
     "pytest-asyncio",
     "pytest-cov",
+    "pytest-argus-server>=0.3.0",
     "tox>=4",
 ]
 maintenance = [
@@ -59,6 +60,12 @@ dev = [
     "pre-commit",
     {include-group = "maintenance"},
     {include-group = "test"},
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: requires a running Argus server (Docker)",
 ]
 
 [tool.ruff]
