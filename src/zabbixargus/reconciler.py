@@ -80,14 +80,23 @@ async def _create_incident_for_problem(
     )
 
     start_time = datetime.fromtimestamp(int(problem["clock"]), tz=timezone.utc)
+    details_url = _build_details_url(problem)
 
     await argus.create_incident_from_problem(
         description=problem.get("name", ""),
         source_incident_id=eventid,
+        details_url=details_url,
         level=argus_level,
         tags=tags,
         start_time=start_time,
     )
+
+
+def _build_details_url(problem: dict) -> str:
+    """Build a relative URL to the Zabbix problem details page."""
+    eventid = problem["eventid"]
+    triggerid = problem.get("objectid", "")
+    return f"tr_events.php?triggerid={triggerid}&eventid={eventid}"
 
 
 async def _close_stale(

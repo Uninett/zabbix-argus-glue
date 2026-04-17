@@ -41,6 +41,7 @@ class ArgusClient:
         *,
         description: str,
         source_incident_id: str,
+        details_url: str = "",
         level: int,
         tags: list[tuple[str, str]],
         start_time: datetime | None = None,
@@ -50,6 +51,7 @@ class ArgusClient:
         incident = Incident(
             description=description,
             source_incident_id=source_incident_id,
+            details_url=details_url,
             level=level,
             tags=tag_dict,
             start_time=start_time or datetime.now(timezone.utc),
