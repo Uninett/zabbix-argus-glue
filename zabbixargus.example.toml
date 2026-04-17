@@ -7,6 +7,8 @@ timeout = 10
 url = "https://zabbix.example.com/zabbix"  # base URL, not the API endpoint
 token = "xyz789..."       # or set ZABBIX_TOKEN env var
 
+# NOTE: Webhook receiver is planned but not yet implemented.
+# These settings are reserved for future use.
 [webhook]
 enabled = true
 listen = "0.0.0.0"
@@ -19,8 +21,8 @@ enabled = true
 interval = 60             # seconds
 
 [sync]
-ack_enabled = false       # bidirectional ack sync
-close_enabled = false     # Argus-to-Zabbix close sync
+ack_enabled = false       # bidirectional ack sync (not yet implemented)
+close_enabled = false     # Argus-to-Zabbix close sync (not yet implemented)
 prefix_hostname = false   # prepend "hostname: " to descriptions missing it
 
 [severity]
