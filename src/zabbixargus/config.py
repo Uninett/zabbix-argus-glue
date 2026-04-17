@@ -19,6 +19,11 @@ class ArgusConfig(BaseModel):
     def token_from_env(self):
         if not self.token:
             self.token = os.environ.get("ARGUS_TOKEN", "")
+        if not self.token:
+            raise ValueError(
+                "Argus token is required: set [argus] token in config "
+                "or ARGUS_TOKEN env var"
+            )
         return self
 
 
@@ -30,6 +35,11 @@ class ZabbixConfig(BaseModel):
     def token_from_env(self):
         if not self.token:
             self.token = os.environ.get("ZABBIX_TOKEN", "")
+        if not self.token:
+            raise ValueError(
+                "Zabbix token is required: set [zabbix] token in config "
+                "or ZABBIX_TOKEN env var"
+            )
         return self
 
 

@@ -27,7 +27,11 @@ def cli(argv=None):
         for path in CONFIG_SEARCH_PATHS:
             print(f"  {path}", file=sys.stderr)
         sys.exit(1)
-    config = load_config(config_path)
+    try:
+        config = load_config(config_path)
+    except Exception as e:
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if args.verify:
         ok = asyncio.run(verify_connections(config))

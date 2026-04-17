@@ -100,6 +100,18 @@ def test_when_missing_argus_url_then_load_config_should_raise(tmp_path):
         load_config(config_file)
 
 
+def test_when_no_token_anywhere_then_load_config_should_raise(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        "[argus]\nurl = 'https://argus'\n[zabbix]\nurl = 'https://zabbix'\n"
+    )
+    monkeypatch.delenv("ARGUS_TOKEN", raising=False)
+    monkeypatch.delenv("ZABBIX_TOKEN", raising=False)
+
+    with pytest.raises(Exception, match="token is required"):
+        load_config(config_file)
+
+
 def test_when_token_in_env_then_config_should_use_env_var(tmp_path, monkeypatch):
     config_file = tmp_path / "config.toml"
     config_file.write_text(
