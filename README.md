@@ -59,6 +59,13 @@ You can override this with `--config PATH`.
 API tokens can also be provided via the `ARGUS_TOKEN` and `ZABBIX_TOKEN`
 environment variables instead of storing them in the config file.
 
+Incident detail links point back to the Zabbix problem page using
+relative URLs (e.g. `tr_events.php?triggerid=...&eventid=...`). The
+Argus source system's `base_url` must include the full path prefix to
+the Zabbix frontend — for Apache-based installs this is typically
+`https://zabbix.example.com/zabbix/`, while Nginx-based installs
+usually use `https://zabbix.example.com/`.
+
 ## Usage
 
 ```bash
