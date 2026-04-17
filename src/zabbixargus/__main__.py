@@ -7,10 +7,62 @@ import sys
 from pathlib import Path
 
 from zabbixargus import __version__
+from zabbixargus.argus_client import ArgusClient
 from zabbixargus.config import load_config
 from zabbixargus.zabbix_client import ZabbixClient
 
 log = logging.getLogger("zabbixargus")
+
+
+def cli(argv=None):
+    args = parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
+    config = load_config(args.config)
+
+    if args.verify:
+        ok = asyncio.run(verify_connections(config))
+        sys.exit(0 if ok else 1)
+
+    # Default: run the service
+    print(f"zabbix-argus-glue {__version__}")
+    raise SystemExit("Service run loop not yet implemented")
+
+
+async def verify_connections(config):
+    """Test connectivity to both Zabbix and Argus APIs."""
+    zabbix_ok = await verify_zabbix(config)
+    argus_ok = await verify_argus(config)
+    return zabbix_ok and argus_ok
+
+
+async def verify_zabbix(config):
+    """Verify Zabbix API connectivity. Returns True on success."""
+    try:
+        client = ZabbixClient(config.zabbix)
+        await client.connect()
+        version = client.api.version
+        print(f"Zabbix: OK (version {version} at {config.zabbix.url})")
+        await client.close()
+    except Exception as e:
+        print(f"Zabbix: FAILED ({e})")
+        return False
+    return True
+
+
+async def verify_argus(config):
+    """Verify Argus API connectivity. Returns True on success."""
+    try:
+        client = ArgusClient(config.argus)
+        await client.get_open_incidents()
+        print(f"Argus: OK ({config.argus.url})")
+    except Exception as e:
+        print(f"Argus: FAILED ({e})")
+        return False
+    return True
 
 
 def parse_args(argv=None):
@@ -40,47 +92,3 @@ def parse_args(argv=None):
         version=f"zabbix-argus-glue {__version__}",
     )
     return parser.parse_args(argv)
-
-
-async def verify_zabbix(config):
-    """Verify Zabbix API connectivity. Returns True on success."""
-    try:
-        client = ZabbixClient(config.zabbix)
-        await client.connect()
-        version = client.api.version
-        print(f"Zabbix: OK (version {version} at {config.zabbix.url})")
-        await client.close()
-    except Exception as e:
-        print(f"Zabbix: FAILED ({e})")
-        return False
-    return True
-
-
-async def verify_argus(config):
-    """Verify Argus API connectivity. Returns True on success."""
-    raise NotImplementedError
-
-
-async def verify_connections(config):
-    """Test connectivity to both Zabbix and Argus APIs."""
-    zabbix_ok = await verify_zabbix(config)
-    argus_ok = await verify_argus(config)
-    return zabbix_ok and argus_ok
-
-
-def cli(argv=None):
-    args = parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
-
-    config = load_config(args.config)
-
-    if args.verify:
-        ok = asyncio.run(verify_connections(config))
-        sys.exit(0 if ok else 1)
-
-    # Default: run the service
-    print(f"zabbix-argus-glue {__version__}")
-    raise SystemExit("Service run loop not yet implemented")
