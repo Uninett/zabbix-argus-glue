@@ -59,6 +59,7 @@ class ReconciliationConfig(BaseModel):
 class SyncConfig(BaseModel):
     ack_enabled: bool = False
     close_enabled: bool = False
+    prefix_hostname: bool = False
 
 
 class SeverityConfig(BaseModel):

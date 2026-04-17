@@ -84,6 +84,8 @@ async def _create_incident_for_problem(
 
     await argus.create_incident_from_problem(
         description=problem.get("name", ""),
+        hostname=hostname,
+        prefix_hostname=config.sync.prefix_hostname,
         source_incident_id=eventid,
         details_url=details_url,
         level=argus_level,

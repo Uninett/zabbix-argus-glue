@@ -83,3 +83,63 @@ async def test_when_problem_data_given_then_create_incident_should_post_to_argus
     assert posted.source_incident_id == "100"
     assert posted.level == 2
     assert posted.tags == {"host": "web01", "trigger": "High CPU"}
+
+
+@pytest.mark.asyncio
+async def test_when_prefix_hostname_enabled_then_description_should_include_host(
+    config,
+):
+    client = ArgusClient(config)
+    client.client.post_incident = AsyncMock(return_value=_make_incident("100", pk=1))
+
+    await client.create_incident_from_problem(
+        description="High CPU",
+        hostname="web01",
+        prefix_hostname=True,
+        source_incident_id="100",
+        level=2,
+        tags=[],
+    )
+
+    posted = client.client.post_incident.call_args[0][0]
+    assert posted.description == "web01: High CPU"
+
+
+@pytest.mark.asyncio
+async def test_when_hostname_already_in_description_then_should_not_prefix(
+    config,
+):
+    client = ArgusClient(config)
+    client.client.post_incident = AsyncMock(return_value=_make_incident("100", pk=1))
+
+    await client.create_incident_from_problem(
+        description="web01: High CPU",
+        hostname="web01",
+        prefix_hostname=True,
+        source_incident_id="100",
+        level=2,
+        tags=[],
+    )
+
+    posted = client.client.post_incident.call_args[0][0]
+    assert posted.description == "web01: High CPU"
+
+
+@pytest.mark.asyncio
+async def test_when_prefix_hostname_disabled_then_description_should_be_unchanged(
+    config,
+):
+    client = ArgusClient(config)
+    client.client.post_incident = AsyncMock(return_value=_make_incident("100", pk=1))
+
+    await client.create_incident_from_problem(
+        description="High CPU",
+        hostname="web01",
+        prefix_hostname=False,
+        source_incident_id="100",
+        level=2,
+        tags=[],
+    )
+
+    posted = client.client.post_incident.call_args[0][0]
+    assert posted.description == "High CPU"

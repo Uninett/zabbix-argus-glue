@@ -40,6 +40,8 @@ class ArgusClient:
         self,
         *,
         description: str,
+        hostname: str = "",
+        prefix_hostname: bool = False,
         source_incident_id: str,
         details_url: str = "",
         level: int,
@@ -47,6 +49,8 @@ class ArgusClient:
         start_time: datetime | None = None,
     ) -> Incident:
         """Create an Argus incident from Zabbix problem data."""
+        if prefix_hostname and hostname and hostname not in description:
+            description = f"{hostname}: {description}"
         tag_dict = {k: v for k, v in tags}
         incident = Incident(
             description=description,

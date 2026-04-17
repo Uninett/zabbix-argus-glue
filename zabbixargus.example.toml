@@ -21,6 +21,7 @@ interval = 60             # seconds
 [sync]
 ack_enabled = false       # bidirectional ack sync
 close_enabled = false     # Argus-to-Zabbix close sync
+prefix_hostname = false   # prepend "hostname: " to descriptions missing it
 
 [severity]
 # Zabbix 0-5 (0=Not classified, 5=Disaster)
