@@ -52,30 +52,42 @@ async def _create_missing(
         if eventid in argus_incidents:
             continue
 
-        hosts = problem.get("hosts", [])
-        hostname = hosts[0]["host"] if hosts else ""
-        hostgroups = []  # TODO: enrich when hostgroup data is available
+        try:
+            await _create_incident_for_problem(problem, argus, config)
+        except Exception:
+            log.exception("Failed to create incident for problem %s", eventid)
 
-        zabbix_severity = int(problem["severity"])
-        argus_level = config.severity.mapping[zabbix_severity]
 
-        tags = build_tags(
-            hostname=hostname,
-            hostgroups=hostgroups,
-            trigger=problem.get("name", ""),
-            zabbix_tags=problem.get("tags", []),
-            config=config.tags,
-        )
+async def _create_incident_for_problem(
+    problem: dict,
+    argus: ArgusClient,
+    config: Config,
+):
+    eventid = problem["eventid"]
+    hosts = problem.get("hosts", [])
+    hostname = hosts[0]["host"] if hosts else ""
+    hostgroups = []  # TODO: enrich when hostgroup data is available
 
-        start_time = datetime.fromtimestamp(int(problem["clock"]), tz=timezone.utc)
+    zabbix_severity = int(problem["severity"])
+    argus_level = config.severity.mapping[zabbix_severity]
 
-        await argus.create_incident_from_problem(
-            description=problem.get("name", ""),
-            source_incident_id=eventid,
-            level=argus_level,
-            tags=tags,
-            start_time=start_time,
-        )
+    tags = build_tags(
+        hostname=hostname,
+        hostgroups=hostgroups,
+        trigger=problem.get("name", ""),
+        zabbix_tags=problem.get("tags", []),
+        config=config.tags,
+    )
+
+    start_time = datetime.fromtimestamp(int(problem["clock"]), tz=timezone.utc)
+
+    await argus.create_incident_from_problem(
+        description=problem.get("name", ""),
+        source_incident_id=eventid,
+        level=argus_level,
+        tags=tags,
+        start_time=start_time,
+    )
 
 
 async def _close_stale(
@@ -85,9 +97,12 @@ async def _close_stale(
 ):
     for source_id, incident in argus_incidents.items():
         if source_id not in open_problem_ids:
-            await argus.client.resolve_incident(incident)
-            log.info(
-                "Closed Argus incident %s (Zabbix problem %s no longer open)",
-                incident.pk,
-                source_id,
-            )
+            try:
+                await argus.client.resolve_incident(incident)
+                log.info(
+                    "Closed Argus incident %s (Zabbix problem %s no longer open)",
+                    incident.pk,
+                    source_id,
+                )
+            except Exception:
+                log.exception("Failed to close Argus incident %s", incident.pk)

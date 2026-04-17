@@ -124,3 +124,22 @@ async def test_when_severity_mapped_then_reconcile_should_use_argus_level(
 
     call_kwargs = argus.create_incident_from_problem.call_args.kwargs
     assert call_kwargs["level"] == 1  # Zabbix 5 (Disaster) → Argus 1 (Critical)
+
+
+@pytest.mark.asyncio
+async def test_when_one_problem_fails_then_reconcile_should_continue_with_others(
+    zabbix, argus
+):
+    zabbix.get_problems_with_hosts.return_value = [
+        _problem("100"),
+        _problem("200"),
+    ]
+    argus.get_open_incidents.return_value = {}
+    argus.create_incident_from_problem.side_effect = [
+        Exception("API error"),
+        _incident("200"),
+    ]
+
+    await reconcile(zabbix, argus, _config())
+
+    assert argus.create_incident_from_problem.call_count == 2
