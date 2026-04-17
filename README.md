@@ -6,34 +6,40 @@ that synchronizes [Zabbix](https://www.zabbix.com/) 7.4+ problems with
 Zabbix problem events into Argus incident state changes, keeping both
 systems in sync.
 
-> **Note:** This project is under active development and is not yet
-> fully functional.
+> **Status:** Early development. The reconciliation poller is
+> functional; webhook and ack sync are planned but not yet implemented.
 
 ## Architecture
 
-Hybrid push + poll design with three concurrent async loops:
+Hybrid push + poll design:
 
 ```
 ┌─────────────┐   webhook POST    ┌──────────────────────┐   REST API   ┌───────────┐
-│   Zabbix    │ ───────────────>  │  zabbix-argus-glue   │ ───────────> │   Argus   │
+│   Zabbix    │ ─ ─ ─ ─ ─ ─ ─ >   │  zabbix-argus-glue   │ ───────────> │   Argus   │
 │   Server    │ <───────────────  │                      │ <─────────── │   Server  │
-│             │   API polling     │  - HTTP receiver     │              │           │
-└─────────────┘   + ack writeback │  - Reconciliation    │              └───────────┘
-                                  │  - Ack sync          │
+│             │   API polling     │  - Reconciliation    │              │           │
+└─────────────┘                   │  - HTTP receiver  *  │              └───────────┘
+                                  │  - Ack sync       *  │
                                   └──────────────────────┘
+                                           * planned
 ```
 
-1. **Webhook receiver** — receives Zabbix webhook POSTs, creates/closes
-   Argus incidents in near-real-time.
-2. **Reconciliation poller** — periodically fetches open problems from
-   Zabbix, compares against Argus state, fixes drift. Full sync on startup.
-3. **Ack sync** — detects acknowledgements and closures made in Argus,
-   writes them back to Zabbix (optional, off by default).
+1. **Reconciliation poller** — periodically fetches open problems from
+   Zabbix, compares against Argus state, fixes drift. Full sync on
+   startup. **(implemented)**
+2. **Webhook receiver** — receive Zabbix webhook POSTs, create/close
+   Argus incidents in near-real-time. **(planned)**
+3. **Ack sync** — detect acknowledgements and closures made in Argus,
+   write them back to Zabbix. **(planned)**
 
 ## Installation
 
+This package depends on the `feature/async` branch of
+[pyargus](yhttps://github.com/Uninett/pyargus), which has not been
+released to PyPI yet. Install directly from the repository:
+
 ```bash
-pip install zabbix-argus-glue
+pip install git+https://github.com/Uninett/zabbix-argus-glue.git
 ```
 
 ## Configuration
