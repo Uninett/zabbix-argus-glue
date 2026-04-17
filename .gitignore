@@ -1,6 +1,10 @@
 # Claude Code
 CLAUDE.md
 
+# Local config and secrets
+zabbixargus.toml
+*.gpg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
