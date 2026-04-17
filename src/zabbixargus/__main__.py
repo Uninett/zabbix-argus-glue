@@ -8,6 +8,7 @@ from pathlib import Path
 
 from zabbixargus import __version__
 from zabbixargus.config import load_config
+from zabbixargus.zabbix_client import ZabbixClient
 
 log = logging.getLogger("zabbixargus")
 
@@ -43,7 +44,16 @@ def parse_args(argv=None):
 
 async def verify_zabbix(config):
     """Verify Zabbix API connectivity. Returns True on success."""
-    raise NotImplementedError
+    try:
+        client = ZabbixClient(config.zabbix)
+        await client.connect()
+        version = client.api.version
+        print(f"Zabbix: OK (version {version} at {config.zabbix.url})")
+        await client.close()
+    except Exception as e:
+        print(f"Zabbix: FAILED ({e})")
+        return False
+    return True
 
 
 async def verify_argus(config):
