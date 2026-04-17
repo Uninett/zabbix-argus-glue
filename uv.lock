@@ -1586,6 +1586,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "argus-api-client" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "zabbix-utils", extra = ["async"] },
 ]
@@ -1616,6 +1617,7 @@ test = [
 requires-dist = [
     { name = "aiohttp" },
     { name = "argus-api-client", git = "https://github.com/Uninett/pyargus.git?rev=feature%2Fasync" },
+    { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2" },
     { name = "zabbix-utils", extras = ["async"] },
 ]

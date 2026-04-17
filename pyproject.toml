@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
     "aiohttp",
     "argus-api-client @ git+https://github.com/Uninett/pyargus.git@feature/async",
+    "platformdirs",
     "pydantic>=2",
     "zabbix-utils[async]",
 ]
