@@ -1,8 +1,10 @@
 """Tests for TOML configuration loading and validation."""
 
+from unittest.mock import patch
+
 import pytest
 
-from zabbixargus.config import load_config
+from zabbixargus.config import find_config, load_config
 
 MINIMAL_TOML = """\
 [argus]
@@ -122,3 +124,27 @@ def test_when_token_in_file_and_env_then_config_should_prefer_file(
     config = load_config(config_file)
 
     assert config.argus.token == "argus-token"
+
+
+def test_when_config_in_cwd_then_find_config_should_return_it(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / "zabbixargus.toml"
+    config_file.write_text(MINIMAL_TOML)
+
+    result = find_config()
+
+    assert result is not None
+    assert result.name == "zabbixargus.toml"
+
+
+def test_when_no_config_anywhere_then_find_config_should_return_none(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    with patch(
+        "zabbixargus.config.CONFIG_SEARCH_PATHS",
+        [tmp_path / "nonexistent.toml"],
+    ):
+        result = find_config()
+
+    assert result is None

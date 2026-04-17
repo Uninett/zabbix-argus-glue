@@ -4,6 +4,7 @@ import os
 import tomllib
 from pathlib import Path
 
+import platformdirs
 from pydantic import BaseModel, model_validator
 
 DEFAULT_SEVERITY_MAPPING = {0: 5, 1: 5, 2: 4, 3: 3, 4: 2, 5: 1}
@@ -71,6 +72,24 @@ class Config(BaseModel):
     sync: SyncConfig = SyncConfig()
     severity: SeverityConfig = SeverityConfig()
     tags: TagsConfig = TagsConfig()
+
+
+CONFIG_FILENAME = "zabbixargus.toml"
+APP_NAME = "zabbixargus"
+
+CONFIG_SEARCH_PATHS = [
+    Path(CONFIG_FILENAME),
+    Path(platformdirs.user_config_dir(APP_NAME), CONFIG_FILENAME),
+    Path(platformdirs.site_config_dir(APP_NAME), CONFIG_FILENAME),
+]
+
+
+def find_config() -> Path | None:
+    """Search standard locations for the configuration file."""
+    for path in CONFIG_SEARCH_PATHS:
+        if path.is_file():
+            return path
+    return None
 
 
 def load_config(path: Path) -> Config:
