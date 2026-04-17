@@ -51,15 +51,16 @@ async def verify_connections(config):
 
 async def verify_zabbix(config):
     """Verify Zabbix API connectivity. Returns True on success."""
+    client = ZabbixClient(config.zabbix)
     try:
-        client = ZabbixClient(config.zabbix)
         await client.connect()
         version = client.api.version
         print(f"Zabbix: OK (version {version} at {config.zabbix.url})")
-        await client.close()
     except Exception as e:
         print(f"Zabbix: FAILED ({e})")
         return False
+    finally:
+        await client.close()
     return True
 
 
