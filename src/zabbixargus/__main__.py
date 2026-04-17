@@ -3,8 +3,11 @@
 import argparse
 import asyncio
 import logging
+import re
 import sys
 from pathlib import Path
+
+import aiohttp
 
 from zabbixargus import __version__
 from zabbixargus.argus_client import ArgusClient
@@ -73,11 +76,27 @@ async def verify_argus(config):
     try:
         client = ArgusClient(config.argus)
         await client.get_open_incidents()
-        print(f"Argus: OK ({config.argus.url})")
+        version = await _fetch_argus_version(config.argus.url)
+        version_info = f"version {version} at " if version else ""
+        print(f"Argus: OK ({version_info}{config.argus.url})")
     except Exception as e:
         print(f"Argus: FAILED ({e})")
         return False
     return True
+
+
+async def _fetch_argus_version(api_url: str) -> str | None:
+    """Fetch server version from the Argus metadata endpoint."""
+    metadata_url = re.sub(r"/v\d+/?$", "/", api_url)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(metadata_url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("server-version")
+    except Exception:
+        pass
+    return None
 
 
 def parse_args(argv=None):
