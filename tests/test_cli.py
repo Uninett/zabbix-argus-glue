@@ -8,9 +8,9 @@ from zabbixargus.__main__ import parse_args, verify_argus, verify_zabbix
 from zabbixargus.config import ArgusConfig, ZabbixConfig
 
 
-def test_when_no_config_then_parser_should_error():
-    with pytest.raises(SystemExit):
-        parse_args([])
+def test_when_no_config_then_parser_should_default_to_none():
+    args = parse_args([])
+    assert args.config is None
 
 
 def test_when_config_given_then_parser_should_accept():

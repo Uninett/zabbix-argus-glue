@@ -8,7 +8,7 @@ from pathlib import Path
 
 from zabbixargus import __version__
 from zabbixargus.argus_client import ArgusClient
-from zabbixargus.config import load_config
+from zabbixargus.config import CONFIG_SEARCH_PATHS, find_config, load_config
 from zabbixargus.zabbix_client import ZabbixClient
 
 log = logging.getLogger("zabbixargus")
@@ -21,7 +21,13 @@ def cli(argv=None):
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    config = load_config(args.config)
+    config_path = args.config or find_config()
+    if config_path is None:
+        print("No configuration file found. Searched:", file=sys.stderr)
+        for path in CONFIG_SEARCH_PATHS:
+            print(f"  {path}", file=sys.stderr)
+        sys.exit(1)
+    config = load_config(config_path)
 
     if args.verify:
         ok = asyncio.run(verify_connections(config))
@@ -72,8 +78,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--config",
         type=Path,
-        required=True,
-        help="path to TOML configuration file",
+        default=None,
+        help="path to TOML configuration file (default: auto-discover)",
     )
     parser.add_argument(
         "--verify",
