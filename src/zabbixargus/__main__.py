@@ -38,8 +38,9 @@ def cli(argv=None):
         sys.exit(0 if ok else 1)
 
     # Default: run the service
-    print(f"zabbix-argus-glue {__version__}")
-    raise SystemExit("Service run loop not yet implemented")
+    from zabbixargus.core import run
+
+    asyncio.run(run(config))
 
 
 def setup_logging(*, verbose: bool = False, quiet: bool = False):
