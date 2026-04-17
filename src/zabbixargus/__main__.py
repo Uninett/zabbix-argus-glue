@@ -17,7 +17,11 @@ log = logging.getLogger("zabbixargus")
 def cli(argv=None):
     args = parse_args(argv)
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
+        level=logging.DEBUG
+        if args.verbose
+        else logging.WARNING
+        if args.verify
+        else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
 
