@@ -30,7 +30,7 @@ def cli(argv=None):
     try:
         config = load_config(config_path)
     except Exception as e:
-        print(f"Configuration error: {e}", file=sys.stderr)
+        print(f"Configuration error in {config_path}: {e}", file=sys.stderr)
         sys.exit(1)
 
     if args.verify:
