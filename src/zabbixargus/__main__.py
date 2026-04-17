@@ -113,7 +113,7 @@ async def _fetch_argus_version(api_url: str) -> str | None:
                     data = await resp.json()
                     return data.get("server-version")
     except Exception:
-        pass
+        log.debug("Could not fetch Argus server version", exc_info=True)
     return None
 
 
