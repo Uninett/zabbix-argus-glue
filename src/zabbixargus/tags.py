@@ -1,5 +1,7 @@
 """Tag building from Zabbix problem data."""
 
+import re
+
 from zabbixargus.config import TagsConfig
 
 
@@ -31,13 +33,25 @@ def build_tags(
 
     if config.include_zabbix_tags and zabbix_tags:
         for ztag in zabbix_tags:
-            tags.append((ztag["tag"], ztag.get("value", "")))
+            key = _sanitize_key(ztag["tag"])
+            if key:
+                tags.append((key, ztag.get("value", "")))
 
     for static_tag in config.static:
         key, _, value = static_tag.partition("=")
         tags.append((key, value))
 
     return tags
+
+
+def _sanitize_key(key: str) -> str:
+    """Sanitize a tag key for Argus compatibility.
+
+    Argus requires keys to match ``^[a-z0-9_]+$``.  Returns an empty
+    string if nothing remains after sanitization.
+    """
+    key = key.lower().replace(" ", "_").replace("-", "_")
+    return re.sub(r"[^a-z0-9_]", "", key)
 
 
 def tags_to_argus_api(tags: list[tuple[str, str]]) -> list[dict[str, str]]:

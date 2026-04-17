@@ -102,6 +102,51 @@ def test_when_no_data_and_no_static_then_build_tags_should_return_empty():
     assert tags == []
 
 
+def test_when_zabbix_tag_has_uppercase_then_build_tags_should_lowercase_key():
+    tags = build_tags(
+        zabbix_tags=[{"tag": "Application", "value": "nginx"}],
+        config=_config(),
+    )
+
+    assert ("application", "nginx") in tags
+
+
+def test_when_zabbix_tag_has_spaces_then_build_tags_should_use_underscores():
+    tags = build_tags(
+        zabbix_tags=[{"tag": "My Tag", "value": "val"}],
+        config=_config(),
+    )
+
+    assert ("my_tag", "val") in tags
+
+
+def test_when_zabbix_tag_has_hyphens_then_build_tags_should_use_underscores():
+    tags = build_tags(
+        zabbix_tags=[{"tag": "my-tag", "value": "val"}],
+        config=_config(),
+    )
+
+    assert ("my_tag", "val") in tags
+
+
+def test_when_zabbix_tag_has_dots_then_build_tags_should_strip_them():
+    tags = build_tags(
+        zabbix_tags=[{"tag": "net.if.speed", "value": "1000"}],
+        config=_config(),
+    )
+
+    assert ("netifspeed", "1000") in tags
+
+
+def test_when_zabbix_tag_sanitizes_to_empty_then_build_tags_should_skip_it():
+    tags = build_tags(
+        zabbix_tags=[{"tag": "!!!", "value": "bad"}],
+        config=_config(),
+    )
+
+    assert not any(v == "bad" for _, v in tags)
+
+
 def test_tags_to_argus_api_should_produce_correct_format():
     tags = [("host", "web01"), ("hostgroup", "Linux servers")]
 
