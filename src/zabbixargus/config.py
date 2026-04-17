@@ -72,6 +72,8 @@ class TagsConfig(BaseModel):
     include_hostgroups: bool = True
     include_trigger: bool = True
     include_zabbix_tags: bool = True
+    zabbix_tag_allow: list[str] = []
+    zabbix_tag_block: list[str] = []
 
 
 class Config(BaseModel):

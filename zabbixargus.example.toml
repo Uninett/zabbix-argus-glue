@@ -34,3 +34,8 @@ include_host = true
 include_hostgroups = true
 include_trigger = true
 include_zabbix_tags = true
+# Filter which Zabbix tags are synced to Argus (applied after key
+# sanitization).  If allow is set, only those tags pass.  Otherwise,
+# block excludes listed tags and the rest pass through.
+# zabbix_tag_allow = ["application", "service"]
+# zabbix_tag_block = ["host", "trigger"]

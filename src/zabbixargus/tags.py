@@ -34,7 +34,7 @@ def build_tags(
     if config.include_zabbix_tags and zabbix_tags:
         for ztag in zabbix_tags:
             key = _sanitize_key(ztag["tag"])
-            if key:
+            if key and _is_tag_allowed(key, config):
                 tags.append((key, ztag.get("value", "")))
 
     for static_tag in config.static:
@@ -52,6 +52,13 @@ def _sanitize_key(key: str) -> str:
     """
     key = key.lower().replace(" ", "_").replace("-", "_")
     return re.sub(r"[^a-z0-9_]", "", key)
+
+
+def _is_tag_allowed(key: str, config: TagsConfig) -> bool:
+    """Check whether a sanitized Zabbix tag key passes the filter."""
+    if config.zabbix_tag_allow:
+        return key in config.zabbix_tag_allow
+    return key not in config.zabbix_tag_block
 
 
 def tags_to_argus_api(tags: list[tuple[str, str]]) -> list[dict[str, str]]:

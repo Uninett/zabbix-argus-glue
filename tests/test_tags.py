@@ -147,6 +147,48 @@ def test_when_zabbix_tag_sanitizes_to_empty_then_build_tags_should_skip_it():
     assert not any(v == "bad" for _, v in tags)
 
 
+def test_when_allowlist_set_then_build_tags_should_only_include_allowed():
+    tags = build_tags(
+        zabbix_tags=[
+            {"tag": "application", "value": "nginx"},
+            {"tag": "team", "value": "ops"},
+        ],
+        config=_config(zabbix_tag_allow=["application"]),
+    )
+
+    assert ("application", "nginx") in tags
+    assert not any(k == "team" for k, _ in tags)
+
+
+def test_when_blocklist_set_then_build_tags_should_exclude_blocked():
+    tags = build_tags(
+        zabbix_tags=[
+            {"tag": "application", "value": "nginx"},
+            {"tag": "host", "value": "web01"},
+        ],
+        config=_config(zabbix_tag_block=["host"]),
+    )
+
+    assert ("application", "nginx") in tags
+    assert not any(k == "host" and v == "web01" for k, v in tags)
+
+
+def test_when_both_allow_and_block_set_then_allowlist_should_take_precedence():
+    tags = build_tags(
+        zabbix_tags=[
+            {"tag": "application", "value": "nginx"},
+            {"tag": "service", "value": "web"},
+        ],
+        config=_config(
+            zabbix_tag_allow=["application"],
+            zabbix_tag_block=["application"],
+        ),
+    )
+
+    assert ("application", "nginx") in tags
+    assert not any(k == "service" for k, _ in tags)
+
+
 def test_tags_to_argus_api_should_produce_correct_format():
     tags = [("host", "web01"), ("hostgroup", "Linux servers")]
 
