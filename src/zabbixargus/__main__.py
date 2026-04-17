@@ -63,6 +63,8 @@ def setup_logging(*, verbose: bool = False, quiet: bool = False):
         fmt = "%(levelname)s %(name)s: %(message)s"
 
     logging.basicConfig(level=level, format=fmt)
+    # httpx logs every HTTP request at INFO, which is too noisy.
+    logging.getLogger("httpx").setLevel(max(level, logging.WARNING))
 
 
 async def verify_connections(config):
