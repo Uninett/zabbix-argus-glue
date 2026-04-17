@@ -1,7 +1,7 @@
 """Tests for tag building from Zabbix problem data."""
 
 from zabbixargus.config import TagsConfig
-from zabbixargus.tags import build_tags, tags_to_argus_api
+from zabbixargus.tags import build_tags
 
 
 def _config(**overrides) -> TagsConfig:
@@ -171,14 +171,3 @@ class TestBuildTags:
 
         assert ("application", "nginx") in tags
         assert not any(k == "service" for k, _ in tags)
-
-
-def test_tags_to_argus_api_should_produce_correct_format():
-    tags = [("host", "web01"), ("hostgroup", "Linux servers")]
-
-    result = tags_to_argus_api(tags)
-
-    assert result == [
-        {"tag": "host=web01"},
-        {"tag": "hostgroup=Linux servers"},
-    ]

@@ -59,8 +59,3 @@ def _is_tag_allowed(key: str, config: TagsConfig) -> bool:
     if config.zabbix_tag_allow:
         return key in config.zabbix_tag_allow
     return key not in config.zabbix_tag_block
-
-
-def tags_to_argus_api(tags: list[tuple[str, str]]) -> list[dict[str, str]]:
-    """Convert tag pairs to Argus API format: ``[{"tag": "key=value"}]``."""
-    return [{"tag": f"{key}={value}"} for key, value in tags]
