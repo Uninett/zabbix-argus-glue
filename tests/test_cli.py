@@ -8,21 +8,20 @@ from zabbixargus.__main__ import parse_args, verify_argus, verify_zabbix
 from zabbixargus.config import ArgusConfig, ZabbixConfig
 
 
-def test_when_no_config_then_parser_should_default_to_none():
-    args = parse_args([])
-    assert args.config is None
+class TestParseArgs:
+    def test_when_no_config_then_it_should_default_to_none(self):
+        args = parse_args([])
+        assert args.config is None
 
+    def test_when_config_given_then_it_should_accept(self):
+        args = parse_args(["--config", "test.toml"])
+        assert str(args.config) == "test.toml"
+        assert args.verify is False
+        assert args.verbose is False
 
-def test_when_config_given_then_parser_should_accept():
-    args = parse_args(["--config", "test.toml"])
-    assert str(args.config) == "test.toml"
-    assert args.verify is False
-    assert args.verbose is False
-
-
-def test_when_verify_flag_then_parser_should_set_it():
-    args = parse_args(["--config", "test.toml", "--verify"])
-    assert args.verify is True
+    def test_when_verify_flag_then_it_should_set_it(self):
+        args = parse_args(["--config", "test.toml", "--verify"])
+        assert args.verify is True
 
 
 @pytest.mark.asyncio

@@ -63,83 +63,79 @@ def argus():
     return client
 
 
-@pytest.mark.asyncio
-async def test_when_zabbix_has_new_problem_then_reconcile_should_create_incident(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = [_problem("100")]
-    argus.get_open_incidents.return_value = {}
+class TestReconcile:
+    @pytest.mark.asyncio
+    async def test_when_zabbix_has_new_problem_then_it_should_create_incident(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
 
-    await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config())
 
-    argus.create_incident_from_problem.assert_called_once()
-    call_kwargs = argus.create_incident_from_problem.call_args.kwargs
-    assert call_kwargs["source_incident_id"] == "100"
+        argus.create_incident_from_problem.assert_called_once()
+        call_kwargs = argus.create_incident_from_problem.call_args.kwargs
+        assert call_kwargs["source_incident_id"] == "100"
 
+    @pytest.mark.asyncio
+    async def test_when_problem_already_in_argus_then_it_should_skip_it(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
 
-@pytest.mark.asyncio
-async def test_when_problem_already_in_argus_then_reconcile_should_skip_it(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = [_problem("100")]
-    argus.get_open_incidents.return_value = {"100": _incident("100")}
+        await reconcile(zabbix, argus, _config())
 
-    await reconcile(zabbix, argus, _config())
+        argus.create_incident_from_problem.assert_not_called()
 
-    argus.create_incident_from_problem.assert_not_called()
+    @pytest.mark.asyncio
+    async def test_when_argus_incident_has_no_matching_problem_then_it_should_close_it(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = []
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
 
+        await reconcile(zabbix, argus, _config())
 
-@pytest.mark.asyncio
-async def test_when_argus_incident_has_no_matching_problem_then_reconcile_should_close_it(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = []
-    argus.get_open_incidents.return_value = {"100": _incident("100")}
+        argus.client.resolve_incident.assert_called_once()
 
-    await reconcile(zabbix, argus, _config())
+    @pytest.mark.asyncio
+    async def test_when_problem_below_threshold_then_it_should_skip_it(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="1")]
+        argus.get_open_incidents.return_value = {}
 
-    argus.client.resolve_incident.assert_called_once()
+        await reconcile(zabbix, argus, _config(minimum_severity=3))
 
+        argus.create_incident_from_problem.assert_not_called()
 
-@pytest.mark.asyncio
-async def test_when_problem_below_threshold_then_reconcile_should_skip_it(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="1")]
-    argus.get_open_incidents.return_value = {}
+    @pytest.mark.asyncio
+    async def test_when_severity_mapped_then_it_should_use_argus_level(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="5")]
+        argus.get_open_incidents.return_value = {}
 
-    await reconcile(zabbix, argus, _config(minimum_severity=3))
+        await reconcile(zabbix, argus, _config())
 
-    argus.create_incident_from_problem.assert_not_called()
+        call_kwargs = argus.create_incident_from_problem.call_args.kwargs
+        assert call_kwargs["level"] == 1  # Zabbix 5 (Disaster) → Argus 1 (Critical)
 
+    @pytest.mark.asyncio
+    async def test_when_one_problem_fails_then_it_should_continue_with_others(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [
+            _problem("100"),
+            _problem("200"),
+        ]
+        argus.get_open_incidents.return_value = {}
+        argus.create_incident_from_problem.side_effect = [
+            Exception("API error"),
+            _incident("200"),
+        ]
 
-@pytest.mark.asyncio
-async def test_when_severity_mapped_then_reconcile_should_use_argus_level(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="5")]
-    argus.get_open_incidents.return_value = {}
+        await reconcile(zabbix, argus, _config())
 
-    await reconcile(zabbix, argus, _config())
-
-    call_kwargs = argus.create_incident_from_problem.call_args.kwargs
-    assert call_kwargs["level"] == 1  # Zabbix 5 (Disaster) → Argus 1 (Critical)
-
-
-@pytest.mark.asyncio
-async def test_when_one_problem_fails_then_reconcile_should_continue_with_others(
-    zabbix, argus
-):
-    zabbix.get_problems_with_hosts.return_value = [
-        _problem("100"),
-        _problem("200"),
-    ]
-    argus.get_open_incidents.return_value = {}
-    argus.create_incident_from_problem.side_effect = [
-        Exception("API error"),
-        _incident("200"),
-    ]
-
-    await reconcile(zabbix, argus, _config())
-
-    assert argus.create_incident_from_problem.call_count == 2
+        assert argus.create_incident_from_problem.call_count == 2
