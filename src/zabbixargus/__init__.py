@@ -10,5 +10,6 @@ except PackageNotFoundError:
 
 def main():
     """Entry point for the zabbix-argus-glue CLI."""
-    print(f"zabbix-argus-glue {__version__}")
-    raise SystemExit("Not yet implemented")
+    from zabbixargus.__main__ import cli
+
+    cli()
