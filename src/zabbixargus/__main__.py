@@ -19,14 +19,7 @@ log = logging.getLogger("zabbixargus")
 
 def cli(argv=None):
     args = parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG
-        if args.verbose
-        else logging.WARNING
-        if args.verify
-        else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    setup_logging(verbose=args.verbose, quiet=args.verify)
 
     config_path = args.config or find_config()
     if config_path is None:
@@ -47,6 +40,28 @@ def cli(argv=None):
     # Default: run the service
     print(f"zabbix-argus-glue {__version__}")
     raise SystemExit("Service run loop not yet implemented")
+
+
+def setup_logging(*, verbose: bool = False, quiet: bool = False):
+    """Configure root logging.
+
+    Timestamps are included only when stdout is a terminal; when
+    running under systemd or similar, the process controller adds
+    its own timestamps.
+    """
+    if verbose:
+        level = logging.DEBUG
+    elif quiet:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+
+    if sys.stdout.isatty():
+        fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    else:
+        fmt = "%(levelname)s %(name)s: %(message)s"
+
+    logging.basicConfig(level=level, format=fmt)
 
 
 async def verify_connections(config):
