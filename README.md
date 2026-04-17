@@ -1,17 +1,23 @@
 # zabbix-argus-glue
 
-Synchronizes [Zabbix](https://www.zabbix.com/) 7.4+ problems with
-[Argus](https://github.com/Uninett/Argus) incidents.
+A [glue service](https://argus-server.readthedocs.io/en/latest/integrations/glue-services/index.html)
+that synchronizes [Zabbix](https://www.zabbix.com/) 7.4+ problems with
+[Argus](https://github.com/Uninett/Argus) incidents. It translates
+Zabbix problem events into Argus incident state changes, keeping both
+systems in sync.
+
+> **Note:** This project is under active development and is not yet
+> fully functional.
 
 ## Architecture
 
 Hybrid push + poll design with three concurrent async loops:
 
 ```
-┌─────────────┐   webhook POST    ┌──────────────────────┐   REST API    ┌───────────┐
-│   Zabbix     │ ───────────────> │  zabbix-argus-glue   │ ───────────> │   Argus    │
-│   Server     │ <─────────────── │                      │ <─────────── │   Server   │
-│              │   API polling    │  - HTTP receiver     │              │            │
+┌─────────────┐   webhook POST    ┌──────────────────────┐   REST API   ┌───────────┐
+│   Zabbix    │ ───────────────>  │  zabbix-argus-glue   │ ───────────> │   Argus   │
+│   Server    │ <───────────────  │                      │ <─────────── │   Server  │
+│             │   API polling     │  - HTTP receiver     │              │           │
 └─────────────┘   + ack writeback │  - Reconciliation    │              └───────────┘
                                   │  - Ack sync          │
                                   └──────────────────────┘
@@ -32,32 +38,41 @@ pip install zabbix-argus-glue
 
 ## Configuration
 
-Create a TOML configuration file:
+Copy the example configuration and edit it:
 
-```toml
-[argus]
-url = "https://argus.example.com"
-token = "abc123..."       # or set ARGUS_TOKEN env var
-
-[zabbix]
-url = "https://zabbix.example.com"
-token = "xyz789..."       # or set ZABBIX_TOKEN env var
-
-[webhook]
-enabled = true
-listen = "0.0.0.0"
-port = 8080
-secret = "shared-secret"
-
-[reconciliation]
-enabled = true
-interval = 60
+```bash
+cp zabbixargus.example.toml zabbixargus.toml
 ```
+
+See [zabbixargus.example.toml](zabbixargus.example.toml) for all
+available options with comments.
+
+The program searches for `zabbixargus.toml` in the following locations
+(first match wins):
+
+1. Current working directory
+2. `$XDG_CONFIG_HOME/zabbixargus/` (typically `~/.config/zabbixargus/`)
+3. System config directory (typically `/etc/xdg/zabbixargus/`)
+
+You can override this with `--config PATH`.
+
+API tokens can also be provided via the `ARGUS_TOKEN` and `ZABBIX_TOKEN`
+environment variables instead of storing them in the config file.
 
 ## Usage
 
 ```bash
-zabbix-argus-glue --config config.toml
+# Run the service (config auto-discovered)
+zabbix-argus-glue
+
+# Verify API connectivity before running
+zabbix-argus-glue --verify
+
+# Use an explicit config file
+zabbix-argus-glue --config /etc/zabbixargus/zabbixargus.toml
+
+# Enable debug logging
+zabbix-argus-glue -v
 ```
 
 ## Development
@@ -68,8 +83,8 @@ Requires Python 3.11+.
 # Clone and install in editable mode
 git clone https://github.com/Uninett/zabbix-argus-glue.git
 cd zabbix-argus-glue
-uv venv
-uv pip install -e ".[dev]"
+uv venv --python 3.13
+uv sync --all-groups
 
 # Set up pre-commit hooks
 pre-commit install

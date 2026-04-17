@@ -1,0 +1,36 @@
+[argus]
+url = "https://argus.example.com/api/v2"
+token = "abc123..."       # or set ARGUS_TOKEN env var
+timeout = 10
+
+[zabbix]
+url = "https://zabbix.example.com/zabbix"  # base URL, not the API endpoint
+token = "xyz789..."       # or set ZABBIX_TOKEN env var
+
+[webhook]
+enabled = true
+listen = "0.0.0.0"
+port = 8080
+secret = "shared-secret"  # validates incoming webhook POSTs
+allowed_ips = []          # optional IP allowlist, e.g. ["10.0.0.5/32"]
+
+[reconciliation]
+enabled = true
+interval = 60             # seconds
+
+[sync]
+ack_enabled = false       # bidirectional ack sync
+close_enabled = false     # Argus-to-Zabbix close sync
+
+[severity]
+# Zabbix 0-5 (0=Not classified, 5=Disaster)
+# Argus 1-5 (1=Critical, 5=Informational)
+mapping = { 0 = 5, 1 = 5, 2 = 4, 3 = 3, 4 = 2, 5 = 1 }
+minimum_severity = 0      # sync problems at or above this Zabbix severity
+
+[tags]
+static = ["source=zabbix"]  # tags always added to Argus incidents
+include_host = true
+include_hostgroups = true
+include_trigger = true
+include_zabbix_tags = true
