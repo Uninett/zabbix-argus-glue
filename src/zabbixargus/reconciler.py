@@ -130,12 +130,7 @@ async def _close_stale(
     for source_id, incident in argus_incidents.items():
         if source_id not in open_problem_ids:
             try:
-                await argus.client.resolve_incident(incident)
-                log.info(
-                    "Closed Argus incident %s (Zabbix problem %s no longer open)",
-                    incident.pk,
-                    source_id,
-                )
+                await argus.resolve_incident(incident)
                 closed += 1
             except Exception:
                 log.exception("Failed to close Argus incident %s", incident.pk)
