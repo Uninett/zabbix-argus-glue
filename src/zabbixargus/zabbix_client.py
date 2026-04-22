@@ -80,3 +80,8 @@ class ZabbixClient:
             problem["hosts"] = hosts_by_eventid.get(problem["eventid"], [])
 
         return problems
+
+
+def build_details_url(*, eventid: str, triggerid: str) -> str:
+    """Build a relative URL to the Zabbix problem details page."""
+    return f"tr_events.php?triggerid={triggerid}&eventid={eventid}"
