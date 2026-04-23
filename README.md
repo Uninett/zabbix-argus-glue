@@ -105,16 +105,19 @@ configure:
 
   | Name        | Value                                               |
   |-------------|-----------------------------------------------------|
-  | `glue_url`  | `http://glue-host:8080/webhook`                     |
-  | `secret`    | *(same value as `[webhook] secret` in your config)* |
-  | `eventid`   | `{EVENT.ID}`                                        |
-  | `value`     | `{EVENT.VALUE}`                                     |
-  | `severity`  | `{EVENT.NSEVERITY}`                                 |
-  | `hostname`  | `{HOST.NAME}`                                       |
-  | `name`      | `{EVENT.NAME}`                                      |
-  | `clock`     | `{EVENT.DATE} {EVENT.TIME}`                         |
-  | `triggerid` | `{TRIGGER.ID}`                                      |
-  | `tags`      | `{EVENT.TAGSJSON}`                                  |
+  | `glue_url`       | `http://glue-host:8080/webhook`                     |
+  | `secret`         | *(same value as `[webhook] secret` in your config)* |
+  | `eventid`        | `{EVENT.ID}`                                        |
+  | `value`          | `{EVENT.VALUE}`                                     |
+  | `severity`       | `{EVENT.NSEVERITY}`                                 |
+  | `hostname`       | `{HOST.NAME}`                                       |
+  | `name`           | `{EVENT.NAME}`                                      |
+  | `clock`          | `{EVENT.DATE} {EVENT.TIME}`                         |
+  | `triggerid`      | `{TRIGGER.ID}`                                      |
+  | `tags`           | `{EVENT.TAGSJSON}`                                  |
+  | `update_status`  | `{EVENT.UPDATE.STATUS}`                             |
+  | `update_action`  | `{EVENT.UPDATE.ACTIONJSON}`                         |
+  | `update_user`    | `{USER.FULLNAME}`                                   |
 
 - **Script:**
 
@@ -134,6 +137,9 @@ configure:
   payload.clock = params.clock;
   payload.triggerid = params.triggerid;
   payload.tags = params.tags;
+  payload.update_status = params.update_status;
+  payload.update_action = params.update_action;
+  payload.update_user = params.update_user;
 
   var resp = req.post(params.glue_url, JSON.stringify(payload));
 
@@ -173,6 +179,9 @@ Go to **Alerts → Actions → Trigger actions → Create action**:
     message to be defined even though webhooks ignore it.
 - **Recovery operations → Add:**
   - Same settings as above, including a custom message
+- **Update operations → Add:**
+  - Same settings as above (forwards acks, comments, and
+    severity changes)
 
 ### 4. Test with curl
 
