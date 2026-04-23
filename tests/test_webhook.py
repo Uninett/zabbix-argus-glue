@@ -263,7 +263,49 @@ class TestPayloadValidation:
 
         assert resp.status == 400
 
+    async def test_when_validation_fails_then_error_body_should_be_generic(
+        self, client
+    ):
+        resp = await _post(client, {"value": "1"})
+        body = await resp.json()
+
+        assert body == {"error": "invalid payload"}
+
     async def test_when_get_request_then_it_should_return_405(self, client):
         resp = await client.get("/webhook", headers={"X-Webhook-Secret": "test-secret"})
 
         assert resp.status == 405
+
+
+class TestArgusFailure:
+    async def test_when_argus_create_raises_then_it_should_return_500(
+        self, client, mock_argus
+    ):
+        mock_argus.create_incident_from_problem.side_effect = Exception("network")
+
+        resp = await _post(client, _problem_payload())
+
+        assert resp.status == 500
+
+    async def test_when_argus_resolve_raises_then_it_should_return_500(
+        self, client, mock_argus
+    ):
+        mock_argus.resolve_by_source_id.side_effect = Exception("network")
+
+        resp = await _post(client, _resolution_payload())
+
+        assert resp.status == 500
+
+
+class TestClockParsing:
+    async def test_when_clock_unparseable_then_it_should_fall_back(
+        self, client, mock_argus
+    ):
+        payload = _problem_payload(clock="not a date")
+
+        resp = await _post(client, payload)
+
+        assert resp.status == 201
+        # Fallback produces a recent datetime; just verify it was accepted
+        call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
+        assert call_kwargs["start_time"] is not None

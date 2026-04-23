@@ -74,7 +74,9 @@ class WebhookPayload(BaseModel):
                     tzinfo=timezone.utc
                 )
             except ValueError:
-                pass
+                log.warning(
+                    "Webhook: unparseable clock value %r, using current time", v
+                )
         return datetime.now(timezone.utc)
 
     @property
@@ -127,18 +129,14 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     try:
         raw = await request.json()
-    except (json.JSONDecodeError, Exception):
-        raise web.HTTPBadRequest(
-            text='{"error": "invalid JSON"}', content_type="application/json"
-        )
+    except json.JSONDecodeError:
+        raise _error_response(web.HTTPBadRequest, "invalid JSON")
 
     try:
         payload = WebhookPayload.model_validate(raw)
     except Exception as e:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": str(e)}),
-            content_type="application/json",
-        )
+        log.debug("Webhook: payload validation failed: %s", e)
+        raise _error_response(web.HTTPBadRequest, "invalid payload")
 
     match payload.event_type:
         case "problem":
@@ -155,10 +153,11 @@ def _validate_secret(request: web.Request, config: WebhookConfig):
         return
     provided = request.headers.get("X-Webhook-Secret", "")
     if provided != config.secret:
-        raise web.HTTPForbidden(
-            text='{"error": "invalid secret"}',
-            content_type="application/json",
+        log.warning(
+            "Webhook: rejected request from %s: invalid or missing secret",
+            request.remote,
         )
+        raise _error_response(web.HTTPForbidden, "invalid secret")
 
 
 def _validate_ip(request: web.Request, config: WebhookConfig):
@@ -167,18 +166,14 @@ def _validate_ip(request: web.Request, config: WebhookConfig):
         return
     remote = request.remote
     if remote is None:
-        raise web.HTTPForbidden(
-            text='{"error": "could not determine remote address"}',
-            content_type="application/json",
-        )
+        log.warning("Webhook: rejected request: could not determine remote address")
+        raise _error_response(web.HTTPForbidden, "could not determine remote address")
     remote_addr = ipaddress.ip_address(remote)
     for entry in config.allowed_ips:
         if remote_addr in ipaddress.ip_network(entry, strict=False):
             return
-    raise web.HTTPForbidden(
-        text='{"error": "source IP not allowed"}',
-        content_type="application/json",
-    )
+    log.warning("Webhook: rejected request from %s: source IP not allowed", remote)
+    raise _error_response(web.HTTPForbidden, "source IP not allowed")
 
 
 async def _handle_problem(
@@ -198,16 +193,22 @@ async def _handle_problem(
         eventid=payload.eventid, triggerid=payload.triggerid
     )
 
-    await argus.create_incident_from_problem(
-        description=payload.name,
-        hostname=payload.hostname,
-        prefix_hostname=config.sync.prefix_hostname,
-        source_incident_id=payload.eventid,
-        details_url=details_url,
-        level=argus_level,
-        tags=tags,
-        start_time=payload.start_time,
-    )
+    try:
+        await argus.create_incident_from_problem(
+            description=payload.name,
+            hostname=payload.hostname,
+            prefix_hostname=config.sync.prefix_hostname,
+            source_incident_id=payload.eventid,
+            details_url=details_url,
+            level=argus_level,
+            tags=tags,
+            start_time=payload.start_time,
+        )
+    except Exception:
+        log.exception(
+            "Webhook: failed to create incident for problem %s", payload.eventid
+        )
+        raise _error_response(web.HTTPInternalServerError, "argus error")
 
     log.info("Webhook: created incident for problem %s", payload.eventid)
     return web.json_response({"status": "created"}, status=201)
@@ -231,10 +232,25 @@ async def _handle_resolution(
     payload: WebhookPayload, argus: ArgusClient
 ) -> web.Response:
     """Resolve an Argus incident when a Zabbix problem is resolved."""
-    resolved = await argus.resolve_by_source_id(payload.eventid)
+    try:
+        resolved = await argus.resolve_by_source_id(payload.eventid)
+    except Exception:
+        log.exception(
+            "Webhook: failed to resolve incident for problem %s", payload.eventid
+        )
+        raise _error_response(web.HTTPInternalServerError, "argus error")
+
     if resolved:
         log.info("Webhook: resolved incident for problem %s", payload.eventid)
         return web.json_response({"status": "resolved"})
     else:
         log.info("Webhook: no open incident found for problem %s", payload.eventid)
         return web.json_response({"status": "not_found"})
+
+
+def _error_response(status_cls, message: str):
+    """Build an aiohttp HTTP error with a JSON error body."""
+    return status_cls(
+        text=json.dumps({"error": message}),
+        content_type="application/json",
+    )
