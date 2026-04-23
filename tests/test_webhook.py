@@ -42,6 +42,18 @@ def _problem_payload(**overrides):
     return defaults
 
 
+def _update_payload(**overrides):
+    defaults = dict(
+        eventid="123",
+        value="1",
+        update_status="1",
+        update_action=json.dumps({"acknowledge": True, "message": "ack from Zabbix"}),
+        update_user="Admin Admin",
+    )
+    defaults.update(overrides)
+    return defaults
+
+
 def _resolution_payload(**overrides):
     defaults = dict(eventid="123", value="0")
     defaults.update(overrides)
@@ -194,6 +206,38 @@ class TestHandleResolution:
 
         assert resp.status == 200
         assert body["status"] == "not_found"
+
+
+class TestHandleUpdate:
+    async def test_when_update_received_then_it_should_return_200(self, client):
+        resp = await _post(client, _update_payload())
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["status"] == "update_received"
+
+    async def test_when_update_received_then_it_should_not_create_incident(
+        self, client, mock_argus
+    ):
+        await _post(client, _update_payload())
+
+        mock_argus.create_incident_from_problem.assert_not_awaited()
+
+    async def test_when_update_received_then_it_should_not_resolve_incident(
+        self, client, mock_argus
+    ):
+        await _post(client, _update_payload())
+
+        mock_argus.resolve_by_source_id.assert_not_awaited()
+
+    async def test_when_update_action_is_json_string_then_it_should_parse(self, client):
+        payload = _update_payload(
+            update_action=json.dumps({"acknowledge": True, "close": False})
+        )
+
+        resp = await _post(client, payload)
+
+        assert resp.status == 200
 
 
 class TestPayloadValidation:
