@@ -37,6 +37,9 @@ class WebhookPayload(BaseModel):
     start_time: datetime = Field(datetime.min, alias="clock")
     triggerid: str = ""
     tags: list[dict[str, str]] = []
+    update_status: int = 0
+    update_action: dict = {}
+    update_user: str = ""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -48,6 +51,18 @@ class WebhookPayload(BaseModel):
                 return json.loads(v)
             except json.JSONDecodeError:
                 return []
+        return v
+
+    @field_validator("update_action", mode="before")
+    @classmethod
+    def parse_update_action_json(cls, v):
+        if isinstance(v, str):
+            if not v:
+                return {}
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return {}
         return v
 
     @field_validator("start_time", mode="before")
@@ -63,8 +78,13 @@ class WebhookPayload(BaseModel):
         return datetime.now(timezone.utc)
 
     @property
-    def is_problem(self) -> bool:
-        return self.value == "1"
+    def event_type(self) -> str:
+        """Classify the event as problem, update, or resolve."""
+        if self.value == "0":
+            return "resolve"
+        if self.update_status == 1:
+            return "update"
+        return "problem"
 
 
 async def run_webhook_server(argus: ArgusClient, config: Config, stop: asyncio.Event):
@@ -120,10 +140,13 @@ async def handle_webhook(request: web.Request) -> web.Response:
             content_type="application/json",
         )
 
-    if payload.is_problem:
-        return await _handle_problem(payload, argus, config)
-    else:
-        return await _handle_resolution(payload, argus)
+    match payload.event_type:
+        case "problem":
+            return await _handle_problem(payload, argus, config)
+        case "update":
+            return await _handle_update(payload)
+        case "resolve":
+            return await _handle_resolution(payload, argus)
 
 
 def _validate_secret(request: web.Request, config: WebhookConfig):
@@ -188,6 +211,20 @@ async def _handle_problem(
 
     log.info("Webhook: created incident for problem %s", payload.eventid)
     return web.json_response({"status": "created"}, status=201)
+
+
+async def _handle_update(payload: WebhookPayload) -> web.Response:
+    """Log a problem update event.
+
+    Actual Argus event posting will be implemented with ack sync.
+    """
+    log.info(
+        "Webhook: update for problem %s by %s: %s",
+        payload.eventid,
+        payload.update_user or "unknown",
+        payload.update_action,
+    )
+    return web.json_response({"status": "update_received"})
 
 
 async def _handle_resolution(
