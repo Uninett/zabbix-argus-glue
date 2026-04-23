@@ -277,6 +277,49 @@ class TestPayloadValidation:
         assert resp.status == 405
 
 
+class TestDuplicateIncident:
+    async def test_when_argus_rejects_duplicate_then_it_should_return_200(
+        self, client, mock_argus
+    ):
+        from simple_rest_client.exceptions import ClientError
+
+        response = MagicMock(
+            status_code=400,
+            body=[
+                "duplicate key value violates unique constraint "
+                '"incident_unique_source_incident_id_per_source"\n'
+                "DETAIL:  Key (source_incident_id, source_id)=(123, 2) "
+                "already exists.\n"
+            ],
+        )
+        mock_argus.create_incident_from_problem.side_effect = ClientError(
+            "duplicate", response
+        )
+
+        resp = await _post(client, _problem_payload())
+        body = await resp.json()
+
+        assert resp.status == 200
+        assert body["status"] == "duplicate"
+
+    async def test_when_argus_rejects_for_other_reason_then_it_should_return_500(
+        self, client, mock_argus
+    ):
+        from simple_rest_client.exceptions import ClientError
+
+        response = MagicMock(
+            status_code=400,
+            body=["some other validation error"],
+        )
+        mock_argus.create_incident_from_problem.side_effect = ClientError(
+            "other", response
+        )
+
+        resp = await _post(client, _problem_payload())
+
+        assert resp.status == 500
+
+
 class TestArgusFailure:
     async def test_when_argus_create_raises_then_it_should_return_500(
         self, client, mock_argus

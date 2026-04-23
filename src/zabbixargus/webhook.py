@@ -9,6 +9,7 @@ from typing import Literal
 
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from simple_rest_client.exceptions import ClientError
 
 from zabbixargus.argus_client import ArgusClient
 from zabbixargus.config import Config, WebhookConfig
@@ -204,6 +205,18 @@ async def _handle_problem(
             tags=tags,
             start_time=payload.start_time,
         )
+    except ClientError as e:
+        if _is_duplicate_source_id(e):
+            log.warning(
+                "Webhook: Argus already has an incident for problem %s, "
+                "ignoring duplicate",
+                payload.eventid,
+            )
+            return web.json_response({"status": "duplicate"})
+        log.exception(
+            "Webhook: failed to create incident for problem %s", payload.eventid
+        )
+        raise _error_response(web.HTTPInternalServerError, "argus error")
     except Exception:
         log.exception(
             "Webhook: failed to create incident for problem %s", payload.eventid
@@ -212,6 +225,14 @@ async def _handle_problem(
 
     log.info("Webhook: created incident for problem %s", payload.eventid)
     return web.json_response({"status": "created"}, status=201)
+
+
+def _is_duplicate_source_id(error: ClientError) -> bool:
+    """Check whether an Argus 400 response indicates a duplicate source ID."""
+    response = getattr(error, "response", None)
+    if response is None or response.status_code != 400:
+        return False
+    return "source_incident_id" in str(response.body)
 
 
 async def _handle_update(payload: WebhookPayload) -> web.Response:
