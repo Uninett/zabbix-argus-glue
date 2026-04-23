@@ -37,8 +37,30 @@ async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
     synced = [p for p in problems if int(p["severity"]) >= minimum]
     problem_ids = {p["eventid"] for p in synced}
 
-    await _create_missing(synced, argus_incidents, argus, config)
-    await _close_stale(problem_ids, argus_incidents, argus)
+    created = await _create_missing(synced, argus_incidents, argus, config)
+    closed = await _close_stale(problem_ids, argus_incidents, argus)
+
+    _log_reconciliation_summary(created, closed, config)
+
+
+def _log_reconciliation_summary(created: int, closed: int, config: Config):
+    """Summarize a reconciliation pass.
+
+    When webhooks are enabled, non-zero drift means some events were
+    never received as webhooks (glue service was down, webhooks
+    misconfigured, or first run); log at WARNING so it is easy to
+    spot.  Otherwise log at INFO.  Zero drift is logged at DEBUG.
+    """
+    if created == 0 and closed == 0:
+        log.debug("Reconciliation pass: no drift")
+        return
+    level = logging.WARNING if config.webhook.enabled else logging.INFO
+    log.log(
+        level,
+        "Reconciliation pass: created %d, closed %d",
+        created,
+        closed,
+    )
 
 
 async def _create_missing(
@@ -46,7 +68,8 @@ async def _create_missing(
     argus_incidents: dict,
     argus: ArgusClient,
     config: Config,
-):
+) -> int:
+    created = 0
     for problem in problems:
         eventid = problem["eventid"]
         if eventid in argus_incidents:
@@ -54,8 +77,10 @@ async def _create_missing(
 
         try:
             await _create_incident_for_problem(problem, argus, config)
+            created += 1
         except Exception:
             log.exception("Failed to create incident for problem %s", eventid)
+    return created
 
 
 async def _create_incident_for_problem(
@@ -105,7 +130,8 @@ async def _close_stale(
     open_problem_ids: set[str],
     argus_incidents: dict,
     argus: ArgusClient,
-):
+) -> int:
+    closed = 0
     for source_id, incident in argus_incidents.items():
         if source_id not in open_problem_ids:
             try:
@@ -115,5 +141,7 @@ async def _close_stale(
                     incident.pk,
                     source_id,
                 )
+                closed += 1
             except Exception:
                 log.exception("Failed to close Argus incident %s", incident.pk)
+    return closed

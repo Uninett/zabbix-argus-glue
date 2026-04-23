@@ -10,15 +10,17 @@ from zabbixargus.config import (
     Config,
     SeverityConfig,
     TagsConfig,
+    WebhookConfig,
     ZabbixConfig,
 )
 from zabbixargus.reconciler import reconcile
 
 
-def _config(**severity_overrides):
+def _config(webhook_enabled=True, **severity_overrides):
     return Config(
         argus=ArgusConfig(url="https://argus", token="t"),
         zabbix=ZabbixConfig(url="https://zabbix", token="t"),
+        webhook=WebhookConfig(enabled=webhook_enabled),
         severity=SeverityConfig(**severity_overrides),
         tags=TagsConfig(static=["source=zabbix"]),
     )
@@ -139,3 +141,47 @@ class TestReconcile:
         await reconcile(zabbix, argus, _config())
 
         assert argus.create_incident_from_problem.call_count == 2
+
+
+class TestReconciliationSummary:
+    @pytest.mark.asyncio
+    async def test_when_drift_and_webhooks_enabled_then_it_should_log_warning(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("WARNING", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(webhook_enabled=True))
+
+        assert any(
+            "Reconciliation pass: created 1, closed 0" in r.message
+            and r.levelname == "WARNING"
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_when_drift_and_webhooks_disabled_then_it_should_log_info(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("INFO", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(webhook_enabled=False))
+
+        summary = [r for r in caplog.records if "Reconciliation pass" in r.message]
+        assert len(summary) == 1
+        assert summary[0].levelname == "INFO"
+
+    @pytest.mark.asyncio
+    async def test_when_no_drift_then_it_should_not_log_summary_above_debug(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = []
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("INFO", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config())
+
+        assert not any("Reconciliation pass" in r.message for r in caplog.records)
