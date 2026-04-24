@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from zabbixargus.argus_client import ArgusClient
 from zabbixargus.config import Config
 from zabbixargus.tags import build_tags
-from zabbixargus.zabbix_client import ZabbixClient
+from zabbixargus.zabbix_client import ZabbixClient, build_details_url
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +105,9 @@ async def _create_incident_for_problem(
     )
 
     start_time = datetime.fromtimestamp(int(problem["clock"]), tz=timezone.utc)
-    details_url = _build_details_url(problem)
+    details_url = build_details_url(
+        eventid=eventid, triggerid=problem.get("objectid", "")
+    )
 
     await argus.create_incident_from_problem(
         description=problem.get("name", ""),
@@ -119,13 +121,6 @@ async def _create_incident_for_problem(
     )
 
 
-def _build_details_url(problem: dict) -> str:
-    """Build a relative URL to the Zabbix problem details page."""
-    eventid = problem["eventid"]
-    triggerid = problem.get("objectid", "")
-    return f"tr_events.php?triggerid={triggerid}&eventid={eventid}"
-
-
 async def _close_stale(
     open_problem_ids: set[str],
     argus_incidents: dict,
@@ -135,12 +130,7 @@ async def _close_stale(
     for source_id, incident in argus_incidents.items():
         if source_id not in open_problem_ids:
             try:
-                await argus.client.resolve_incident(incident)
-                log.info(
-                    "Closed Argus incident %s (Zabbix problem %s no longer open)",
-                    incident.pk,
-                    source_id,
-                )
+                await argus.resolve_incident(incident)
                 closed += 1
             except Exception:
                 log.exception("Failed to close Argus incident %s", incident.pk)

@@ -36,6 +36,24 @@ class ArgusClient:
                 incidents[incident.source_incident_id] = incident
         return incidents
 
+    async def resolve_incident(self, incident: Incident):
+        """Resolve an Argus incident."""
+        await self.client.resolve_incident(incident)
+        log.info("Resolved Argus incident %s", incident.pk)
+
+    async def resolve_by_source_id(self, source_incident_id: str) -> bool:
+        """Resolve an Argus incident by its Zabbix event ID.
+
+        Returns True if the incident was found and resolved, False if
+        no matching open incident exists.
+        """
+        incidents = await self.get_open_incidents()
+        incident = incidents.get(source_incident_id)
+        if incident is None:
+            return False
+        await self.resolve_incident(incident)
+        return True
+
     async def create_incident_from_problem(
         self,
         *,

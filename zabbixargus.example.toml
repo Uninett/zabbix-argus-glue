@@ -7,8 +7,6 @@ timeout = 10
 url = "https://zabbix.example.com/zabbix"  # base URL, not the API endpoint
 token = "xyz789..."       # or set ZABBIX_TOKEN env var
 
-# NOTE: Webhook receiver is planned but not yet implemented.
-# These settings are reserved for future use.
 [webhook]
 enabled = true
 listen = "0.0.0.0"

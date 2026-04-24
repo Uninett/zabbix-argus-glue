@@ -99,7 +99,7 @@ class TestReconcile:
 
         await reconcile(zabbix, argus, _config())
 
-        argus.client.resolve_incident.assert_called_once()
+        argus.resolve_incident.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_when_problem_below_threshold_then_it_should_skip_it(

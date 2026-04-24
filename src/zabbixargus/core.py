@@ -7,6 +7,7 @@ import signal
 from zabbixargus.argus_client import ArgusClient
 from zabbixargus.config import Config
 from zabbixargus.reconciler import run_reconciliation_loop
+from zabbixargus.webhook import run_webhook_server
 from zabbixargus.zabbix_client import ZabbixClient
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ async def run(config: Config, *, _stop: asyncio.Event | None = None):
             async with asyncio.TaskGroup() as tg:
                 if config.reconciliation.enabled:
                     tg.create_task(run_reconciliation_loop(zabbix, argus, config))
+                if config.webhook.enabled:
+                    tg.create_task(run_webhook_server(argus, config, stop))
                 tg.create_task(_wait_for_shutdown(stop))
         except* _Shutdown:
             pass
