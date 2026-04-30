@@ -34,9 +34,8 @@ Hybrid push + poll design:
 
 ## Installation
 
-This package depends on the `feature/async` branch of
-[pyargus](yhttps://github.com/Uninett/pyargus), which has not been
-released to PyPI yet. Install directly from the repository:
+Until the first release is cut, install directly from the
+repository:
 
 ```bash
 pip install git+https://github.com/Uninett/zabbix-argus-glue.git

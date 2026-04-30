@@ -150,11 +150,15 @@ wheels = [
 
 [[package]]
 name = "argus-api-client"
-version = "0.6.0"
-source = { git = "https://github.com/Uninett/pyargus.git?rev=feature%2Fasync#ab5357bef571f8194d0960f61a4ccff86470c05f" }
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "iso8601" },
     { name = "simple-rest-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/2f/13794aa430e103a54337b5a0c95ef5eca66565cda589109b2f334740204b/argus_api_client-0.7.0.tar.gz", hash = "sha256:fce6dfaadb5c428ab7068926722bc4e0684f0d1b16e261d8608c5a47754d6af2", size = 13786, upload-time = "2026-04-30T09:03:27.467Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/33/00ae92a23e3c78605a530fda778bd13585b58ec0a6ae723b844769543522/argus_api_client-0.7.0-py3-none-any.whl", hash = "sha256:a0677d813c2b2079b1ccb7737837681c28f57c9729919b1bec5d8444a73ebb15", size = 15791, upload-time = "2026-04-30T09:03:28.477Z" },
 ]
 
 [[package]]
@@ -1616,7 +1620,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "argus-api-client", git = "https://github.com/Uninett/pyargus.git?rev=feature%2Fasync" },
+    { name = "argus-api-client", specifier = ">=0.7.0" },
     { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2" },
     { name = "zabbix-utils", extras = ["async"] },
