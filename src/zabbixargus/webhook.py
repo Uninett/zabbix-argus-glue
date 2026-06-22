@@ -14,11 +14,12 @@ from simple_rest_client.exceptions import ClientError
 from zabbixargus.argus_client import ArgusClient
 from zabbixargus.config import Config, WebhookConfig
 from zabbixargus.tags import build_tags
-from zabbixargus.zabbix_client import build_details_url
+from zabbixargus.zabbix_client import ZabbixClient, build_details_url
 
 log = logging.getLogger(__name__)
 
 _argus_key = web.AppKey("argus", ArgusClient)
+_zabbix_key = web.AppKey("zabbix", ZabbixClient)
 _config_key = web.AppKey("config", Config)
 
 
@@ -92,9 +93,11 @@ class WebhookPayload(BaseModel):
         return "problem"
 
 
-async def run_webhook_server(argus: ArgusClient, config: Config, stop: asyncio.Event):
+async def run_webhook_server(
+    argus: ArgusClient, zabbix: ZabbixClient, config: Config, stop: asyncio.Event
+):
     """Run the webhook HTTP server until the stop event is set."""
-    app = create_app(argus, config)
+    app = create_app(argus, zabbix, config)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, config.webhook.listen, config.webhook.port)
@@ -110,13 +113,16 @@ async def run_webhook_server(argus: ArgusClient, config: Config, stop: asyncio.E
         await runner.cleanup()
 
 
-def create_app(argus: ArgusClient, config: Config) -> web.Application:
+def create_app(
+    argus: ArgusClient, zabbix: ZabbixClient, config: Config
+) -> web.Application:
     """Build the aiohttp application.
 
     Exposed separately for testing with ``aiohttp.test_utils``.
     """
     app = web.Application()
     app[_argus_key] = argus
+    app[_zabbix_key] = zabbix
     app[_config_key] = config
     app.router.add_post("/webhook", handle_webhook)
     return app
@@ -126,6 +132,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
     """Handle an incoming Zabbix webhook POST."""
     config = request.app[_config_key]
     argus = request.app[_argus_key]
+    zabbix = request.app[_zabbix_key]
 
     _validate_secret(request, config.webhook)
     _validate_ip(request, config.webhook)
@@ -143,7 +150,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     match payload.event_type:
         case "problem":
-            return await _handle_problem(payload, argus, config)
+            return await _handle_problem(payload, argus, zabbix, config)
         case "update":
             return await _handle_update(payload)
         case "resolve":
@@ -180,13 +187,36 @@ def _validate_ip(request: web.Request, config: WebhookConfig):
 
 
 async def _handle_problem(
-    payload: WebhookPayload, argus: ArgusClient, config: Config
+    payload: WebhookPayload,
+    argus: ArgusClient,
+    zabbix: ZabbixClient,
+    config: Config,
 ) -> web.Response:
-    """Create an Argus incident from a Zabbix problem event."""
+    """Create an Argus incident from a Zabbix problem event.
+
+    The Zabbix webhook payload carries no host-group data, so when the
+    host-group filter or hostgroup tagging is active we look the host's
+    groups up via the Zabbix API (cached).  Out-of-group problems are
+    ignored so this path stays consistent with reconciliation.
+    """
+    hostgroups = (
+        await zabbix.get_hostgroups_for_host(payload.hostname)
+        if config.requires_hostgroups()
+        else []
+    )
+    if not config.filter.allows(hostgroups):
+        log.info(
+            "Webhook: problem %s host %s not in allowed groups, ignoring",
+            payload.eventid,
+            payload.hostname,
+        )
+        return web.json_response({"status": "ignored"})
+
     argus_level = config.severity.mapping.get(payload.severity, 5)
 
     tags = build_tags(
         hostname=payload.hostname,
+        hostgroups=hostgroups,
         trigger=payload.name,
         zabbix_tags=payload.tags,
         config=config.tags,

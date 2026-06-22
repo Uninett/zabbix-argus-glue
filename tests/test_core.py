@@ -105,7 +105,7 @@ async def test_when_webhook_enabled_then_run_should_start_server():
 
         webhook_called = asyncio.Event()
 
-        async def fake_webhook_server(argus, cfg, stop_event):
+        async def fake_webhook_server(argus, zabbix, cfg, stop_event):
             webhook_called.set()
             await asyncio.sleep(3600)
 
