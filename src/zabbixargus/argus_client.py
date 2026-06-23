@@ -38,7 +38,12 @@ class ArgusClient:
 
     async def resolve_incident(self, incident: Incident):
         """Resolve an Argus incident."""
-        await self.client.resolve_incident(incident)
+        # Pass an explicit tz-aware UTC timestamp; pyargus defaults to a
+        # naive datetime.now() which Argus interprets as the server's
+        # local timezone, shifting the recorded end_time.
+        await self.client.resolve_incident(
+            incident, timestamp=datetime.now(timezone.utc)
+        )
         log.info("Resolved Argus incident %s", incident.pk)
 
     async def resolve_by_source_id(self, source_incident_id: str) -> bool:

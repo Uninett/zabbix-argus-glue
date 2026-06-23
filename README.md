@@ -93,6 +93,9 @@ The webhook receiver listens for HTTP POSTs from Zabbix. To use it,
 you need to configure a webhook media type and a trigger action in
 Zabbix.
 
+Requires Zabbix 7.2 or later (the setup uses the `{EVENT.TIMESTAMP}`
+macro, introduced after the 7.0 LTS).
+
 ### 1. Create a webhook media type
 
 In Zabbix, go to **Alerts → Media types → Create media type** and
@@ -111,7 +114,7 @@ configure:
   | `severity`       | `{EVENT.NSEVERITY}`                                 |
   | `hostname`       | `{HOST.NAME}`                                       |
   | `name`           | `{EVENT.NAME}`                                      |
-  | `clock`          | `{EVENT.DATE} {EVENT.TIME}`                         |
+  | `timestamp`      | `{EVENT.TIMESTAMP}`                                 |
   | `triggerid`      | `{TRIGGER.ID}`                                      |
   | `tags`           | `{EVENT.TAGSJSON}`                                  |
   | `update_status`  | `{EVENT.UPDATE.STATUS}`                             |
@@ -133,7 +136,7 @@ configure:
   payload.severity = params.severity;
   payload.hostname = params.hostname;
   payload.name = params.name;
-  payload.clock = params.clock;
+  payload.timestamp = params.timestamp;
   payload.triggerid = params.triggerid;
   payload.tags = params.tags;
   payload.update_status = params.update_status;
@@ -194,7 +197,7 @@ curl -X POST http://localhost:8080/webhook \
     "severity": "4",
     "hostname": "web01.example.com",
     "name": "High CPU usage on web01",
-    "clock": "2026.04.22 12:00:00",
+    "timestamp": "1745326800",
     "triggerid": "678",
     "tags": "[{\"tag\": \"application\", \"value\": \"nginx\"}]"
   }'

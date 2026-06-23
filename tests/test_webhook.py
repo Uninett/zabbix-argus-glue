@@ -1,6 +1,7 @@
 """Tests for the webhook receiver."""
 
 import json
+from datetime import timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,7 +35,7 @@ def _problem_payload(**overrides):
         severity="4",
         hostname="web01",
         name="High CPU usage",
-        clock="2026.04.22 12:00:00",
+        timestamp="1745326800",
         triggerid="456",
         tags=json.dumps([{"tag": "application", "value": "nginx"}]),
     )
@@ -340,11 +341,11 @@ class TestArgusFailure:
         assert resp.status == 500
 
 
-class TestClockParsing:
-    async def test_when_clock_unparseable_then_it_should_fall_back(
+class TestTimestampParsing:
+    async def test_when_timestamp_unparseable_then_it_should_fall_back(
         self, client, mock_argus
     ):
-        payload = _problem_payload(clock="not a date")
+        payload = _problem_payload(timestamp="not a number")
 
         resp = await _post(client, payload)
 
@@ -352,3 +353,16 @@ class TestClockParsing:
         # Fallback produces a recent datetime; just verify it was accepted
         call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
         assert call_kwargs["start_time"] is not None
+
+    async def test_when_timestamp_provided_then_it_should_use_utc(
+        self, client, mock_argus
+    ):
+        # 1745326800 == 2025-04-22 13:00:00 UTC
+        payload = _problem_payload(timestamp="1745326800")
+
+        await _post(client, payload)
+
+        call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
+        start = call_kwargs["start_time"]
+        assert start.tzinfo is timezone.utc
+        assert int(start.timestamp()) == 1745326800

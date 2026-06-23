@@ -27,7 +27,9 @@ class WebhookPayload(BaseModel):
 
     Zabbix macro expansion produces strings, but Pydantic coerces
     them into the declared types.  The ``tags`` field is a
-    JSON-encoded array from the ``{EVENT.TAGSJSON}`` macro.
+    JSON-encoded array from the ``{EVENT.TAGSJSON}`` macro.  The
+    ``timestamp`` field is a Unix epoch from ``{EVENT.TIMESTAMP}``
+    (Zabbix 7.2+).
     """
 
     eventid: str
@@ -35,7 +37,10 @@ class WebhookPayload(BaseModel):
     severity: int = 0
     hostname: str = ""
     name: str = ""
-    start_time: datetime = Field(datetime.min, alias="clock")
+    start_time: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        alias="timestamp",
+    )
     triggerid: str = ""
     tags: list[dict[str, str]] = []
     update_status: int = 0
@@ -68,17 +73,14 @@ class WebhookPayload(BaseModel):
 
     @field_validator("start_time", mode="before")
     @classmethod
-    def parse_clock(cls, v):
-        if isinstance(v, str) and v:
-            try:
-                return datetime.strptime(v, "%Y.%m.%d %H:%M:%S").replace(
-                    tzinfo=timezone.utc
-                )
-            except ValueError:
-                log.warning(
-                    "Webhook: unparseable clock value %r, using current time", v
-                )
-        return datetime.now(timezone.utc)
+    def parse_timestamp(cls, v):
+        if v in (None, ""):
+            return datetime.now(timezone.utc)
+        try:
+            return datetime.fromtimestamp(int(v), tz=timezone.utc)
+        except (ValueError, OSError, TypeError):
+            log.warning("Webhook: unparseable timestamp %r, using current time", v)
+            return datetime.now(timezone.utc)
 
     @property
     def event_type(self) -> str:
