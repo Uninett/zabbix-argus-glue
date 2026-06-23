@@ -67,6 +67,7 @@ def mock_argus():
     argus = MagicMock()
     argus.create_incident_from_problem = AsyncMock()
     argus.resolve_by_source_id = AsyncMock(return_value=True)
+    argus.get_incident_by_source_id = AsyncMock(return_value=None)
     return argus
 
 
@@ -340,22 +341,13 @@ class TestPayloadValidation:
 
 
 class TestDuplicateIncident:
-    async def test_when_argus_rejects_duplicate_then_it_should_return_200(
+    async def test_when_argus_reports_duplicate_then_it_should_return_200(
         self, client, mock_argus
     ):
-        from simple_rest_client.exceptions import ClientError
+        from zabbixargus.argus_client import DuplicateIncidentError
 
-        response = MagicMock(
-            status_code=400,
-            body=[
-                "duplicate key value violates unique constraint "
-                '"incident_unique_source_incident_id_per_source"\n'
-                "DETAIL:  Key (source_incident_id, source_id)=(123, 2) "
-                "already exists.\n"
-            ],
-        )
-        mock_argus.create_incident_from_problem.side_effect = ClientError(
-            "duplicate", response
+        mock_argus.create_incident_from_problem.side_effect = DuplicateIncidentError(
+            "123"
         )
 
         resp = await _post(client, _problem_payload())
@@ -363,23 +355,7 @@ class TestDuplicateIncident:
 
         assert resp.status == 200
         assert body["status"] == "duplicate"
-
-    async def test_when_argus_rejects_for_other_reason_then_it_should_return_500(
-        self, client, mock_argus
-    ):
-        from simple_rest_client.exceptions import ClientError
-
-        response = MagicMock(
-            status_code=400,
-            body=["some other validation error"],
-        )
-        mock_argus.create_incident_from_problem.side_effect = ClientError(
-            "other", response
-        )
-
-        resp = await _post(client, _problem_payload())
-
-        assert resp.status == 500
+        mock_argus.get_incident_by_source_id.assert_awaited_once_with("123")
 
 
 class TestArgusFailure:

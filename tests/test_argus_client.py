@@ -1,12 +1,25 @@
 """Tests for the async Argus adapter."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pyargus.models import Incident
+from simple_rest_client.exceptions import ClientError
 
-from zabbixargus.argus_client import ArgusClient
+from zabbixargus.argus_client import ArgusClient, DuplicateIncidentError
 from zabbixargus.config import ArgusConfig
+
+
+def _duplicate_error():
+    response = MagicMock(
+        status_code=400,
+        body=[
+            "duplicate key value violates unique constraint "
+            '"incident_unique_source_incident_id_per_source"\n'
+            "DETAIL:  Key (source_incident_id, source_id)=(100, 2) already exists."
+        ],
+    )
+    return ClientError("duplicate", response)
 
 
 @pytest.fixture
@@ -147,3 +160,73 @@ class TestCreateIncidentFromProblem:
 
         posted = client.client.post_incident.call_args[0][0]
         assert posted.description == "High CPU"
+
+    @pytest.mark.asyncio
+    async def test_when_argus_reports_duplicate_then_it_should_raise_duplicate_error(
+        self, config
+    ):
+        client = ArgusClient(config)
+        client.client.post_incident = AsyncMock(side_effect=_duplicate_error())
+
+        with pytest.raises(DuplicateIncidentError):
+            await client.create_incident_from_problem(
+                description="High CPU", source_incident_id="100", level=2, tags=[]
+            )
+
+    @pytest.mark.asyncio
+    async def test_when_argus_errors_for_other_reason_then_it_should_reraise(
+        self, config
+    ):
+        client = ArgusClient(config)
+        response = MagicMock(status_code=400, body=["some other validation error"])
+        client.client.post_incident = AsyncMock(
+            side_effect=ClientError("other", response)
+        )
+
+        with pytest.raises(ClientError):
+            await client.create_incident_from_problem(
+                description="High CPU", source_incident_id="100", level=2, tags=[]
+            )
+
+
+class TestGetIncidentBySourceId:
+    @pytest.mark.asyncio
+    async def test_when_incident_matches_then_it_should_return_it(self, config):
+        client = ArgusClient(config)
+
+        async def fake_get_my_incidents(**kwargs):
+            yield _make_incident("100", pk=7, open_=False)
+
+        client.client.get_my_incidents = fake_get_my_incidents
+
+        result = await client.get_incident_by_source_id("100")
+
+        assert result.pk == 7
+
+    @pytest.mark.asyncio
+    async def test_when_filter_ignored_then_it_should_only_return_a_match(self, config):
+        client = ArgusClient(config)
+
+        async def fake_get_my_incidents(**kwargs):
+            # Simulate Argus ignoring the source_incident_id filter.
+            yield _make_incident("999", pk=7)
+
+        client.client.get_my_incidents = fake_get_my_incidents
+
+        result = await client.get_incident_by_source_id("100")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_when_lookup_fails_then_it_should_return_none(self, config):
+        client = ArgusClient(config)
+
+        async def fake_get_my_incidents(**kwargs):
+            raise RuntimeError("boom")
+            yield  # make it an async generator
+
+        client.client.get_my_incidents = fake_get_my_incidents
+
+        result = await client.get_incident_by_source_id("100")
+
+        assert result is None
