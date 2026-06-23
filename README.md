@@ -34,11 +34,15 @@ Hybrid push + poll design:
 
 ## Installation
 
-Until the first release is cut, install directly from the
+```bash
+uv tool install zabbix-argus-glue
+```
+
+Or install the latest unreleased version directly from the
 repository:
 
 ```bash
-pip install git+https://github.com/Uninett/zabbix-argus-glue.git
+uv tool install git+https://github.com/Uninett/zabbix-argus-glue.git
 ```
 
 ## Configuration
