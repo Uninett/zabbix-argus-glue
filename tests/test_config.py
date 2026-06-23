@@ -4,7 +4,25 @@ from unittest.mock import patch
 
 import pytest
 
-from zabbixargus.config import find_config, load_config
+from zabbixargus.config import (
+    ArgusConfig,
+    Config,
+    FilterConfig,
+    TagsConfig,
+    ZabbixConfig,
+    find_config,
+    load_config,
+)
+
+
+def _config(**overrides):
+    defaults = dict(
+        argus=ArgusConfig(url="https://argus", token="t"),
+        zabbix=ZabbixConfig(url="https://zabbix", token="t"),
+    )
+    defaults.update(overrides)
+    return Config(**defaults)
+
 
 MINIMAL_TOML = """\
 [argus]
@@ -45,6 +63,9 @@ close_enabled = true
 mapping = {0 = 5, 1 = 5, 2 = 4, 3 = 3, 4 = 2, 5 = 1}
 minimum_severity = 2
 
+[filter]
+hostgroups = ["Linux servers", "Network devices/Core"]
+
 [tags]
 static = ["source=zabbix", "env=prod"]
 include_host = false
@@ -68,6 +89,7 @@ class TestLoadConfig:
         assert config.reconciliation.interval == 60
         assert config.sync.ack_enabled is False
         assert config.severity.minimum_severity == 0
+        assert config.filter.hostgroups == []
         assert config.tags.include_host is True
         assert config.tags.static == []
 
@@ -88,6 +110,7 @@ class TestLoadConfig:
         assert config.sync.ack_enabled is True
         assert config.sync.close_enabled is True
         assert config.severity.minimum_severity == 2
+        assert config.filter.hostgroups == ["Linux servers", "Network devices/Core"]
         assert config.tags.static == ["source=zabbix", "env=prod"]
         assert config.tags.include_host is False
 
@@ -158,3 +181,47 @@ def test_when_no_config_anywhere_then_find_config_should_return_none(
         result = find_config()
 
     assert result is None
+
+
+class TestFilterConfigAllows:
+    def test_when_no_allowlist_then_it_should_allow_everything(self):
+        assert FilterConfig().allows(["anything"])
+
+    def test_when_no_allowlist_and_no_groups_then_it_should_allow(self):
+        assert FilterConfig().allows([])
+
+    def test_when_group_in_allowlist_then_it_should_allow(self):
+        assert FilterConfig(hostgroups=["Linux servers"]).allows(["Linux servers"])
+
+    def test_when_no_group_in_allowlist_then_it_should_reject(self):
+        assert not FilterConfig(hostgroups=["Linux servers"]).allows(
+            ["Windows servers"]
+        )
+
+    def test_when_any_of_several_groups_matches_then_it_should_allow(self):
+        config = FilterConfig(hostgroups=["Linux servers"])
+
+        assert config.allows(["Windows servers", "Linux servers"])
+
+    def test_when_host_has_no_groups_and_allowlist_set_then_it_should_reject(self):
+        assert not FilterConfig(hostgroups=["Linux servers"]).allows([])
+
+
+class TestRequiresHostgroups:
+    def test_when_hostgroup_tags_enabled_then_it_should_require_hostgroups(self):
+        config = _config(tags=TagsConfig(include_hostgroups=True))
+
+        assert config.requires_hostgroups()
+
+    def test_when_filter_set_then_it_should_require_hostgroups(self):
+        config = _config(
+            filter=FilterConfig(hostgroups=["Linux servers"]),
+            tags=TagsConfig(include_hostgroups=False),
+        )
+
+        assert config.requires_hostgroups()
+
+    def test_when_no_filter_and_tags_disabled_then_it_should_not_require(self):
+        config = _config(tags=TagsConfig(include_hostgroups=False))
+
+        assert not config.requires_hostgroups()
