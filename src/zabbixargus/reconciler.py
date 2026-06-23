@@ -30,36 +30,45 @@ async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
     Fetches open problems from Zabbix and open incidents from Argus,
     then creates missing incidents and closes stale ones.
     """
-    problems = await zabbix.get_problems_with_hosts()
+    problems = await zabbix.get_problems_with_hosts(
+        resolve_hostgroups=config.requires_hostgroups()
+    )
     argus_incidents = await argus.get_open_incidents()
 
     minimum = config.severity.minimum_severity
-    synced = [p for p in problems if int(p["severity"]) >= minimum]
+    eligible = [p for p in problems if int(p["severity"]) >= minimum]
+    synced = [p for p in eligible if config.filter.allows(p.get("hostgroups", []))]
+    ignored = len(eligible) - len(synced)
     problem_ids = {p["eventid"] for p in synced}
 
     created = await _create_missing(synced, argus_incidents, argus, config)
     closed = await _close_stale(problem_ids, argus_incidents, argus)
 
-    _log_reconciliation_summary(created, closed, config)
+    _log_reconciliation_summary(created, closed, ignored, config)
 
 
-def _log_reconciliation_summary(created: int, closed: int, config: Config):
+def _log_reconciliation_summary(
+    created: int, closed: int, ignored: int, config: Config
+):
     """Summarize a reconciliation pass.
 
     When webhooks are enabled, non-zero drift means some events were
     never received as webhooks (glue service was down, webhooks
     misconfigured, or first run); log at WARNING so it is easy to
     spot.  Otherwise log at INFO.  Zero drift is logged at DEBUG.
+    ``ignored`` counts problems excluded by the host-group filter and
+    is reported alongside either way.
     """
     if created == 0 and closed == 0:
-        log.debug("Reconciliation pass: no drift")
+        log.debug("Reconciliation pass: no drift (%d ignored by filter)", ignored)
         return
     level = logging.WARNING if config.webhook.enabled else logging.INFO
     log.log(
         level,
-        "Reconciliation pass: created %d, closed %d",
+        "Reconciliation pass: created %d, closed %d (%d ignored by filter)",
         created,
         closed,
+        ignored,
     )
 
 
@@ -91,7 +100,7 @@ async def _create_incident_for_problem(
     eventid = problem["eventid"]
     hosts = problem.get("hosts", [])
     hostname = hosts[0]["host"] if hosts else ""
-    hostgroups = []  # TODO: enrich when hostgroup data is available
+    hostgroups = problem.get("hostgroups", [])
 
     zabbix_severity = int(problem["severity"])
     argus_level = config.severity.mapping[zabbix_severity]

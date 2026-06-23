@@ -10,6 +10,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from zabbixargus.config import (
     ArgusConfig,
     Config,
+    FilterConfig,
     TagsConfig,
     WebhookConfig,
     ZabbixConfig,
@@ -70,9 +71,16 @@ def mock_argus():
 
 
 @pytest.fixture
-async def client(mock_argus):
+def mock_zabbix():
+    zabbix = MagicMock()
+    zabbix.get_hostgroups_for_host = AsyncMock(return_value=[])
+    return zabbix
+
+
+@pytest.fixture
+async def client(mock_argus, mock_zabbix):
     config = _config()
-    app = create_app(mock_argus, config)
+    app = create_app(mock_argus, mock_zabbix, config)
     async with TestClient(TestServer(app)) as c:
         yield c
 
@@ -106,30 +114,34 @@ class TestValidateRequest:
         assert resp.status == 201
 
     async def test_when_no_secret_configured_then_it_should_accept_any(
-        self, mock_argus
+        self, mock_argus, mock_zabbix
     ):
         config = _config(webhook=WebhookConfig(secret=""))
-        app = create_app(mock_argus, config)
+        app = create_app(mock_argus, mock_zabbix, config)
         async with TestClient(TestServer(app)) as c:
             resp = await c.post("/webhook", json=_problem_payload())
 
         assert resp.status == 201
 
-    async def test_when_ip_not_in_allowlist_then_it_should_return_403(self, mock_argus):
+    async def test_when_ip_not_in_allowlist_then_it_should_return_403(
+        self, mock_argus, mock_zabbix
+    ):
         config = _config(
             webhook=WebhookConfig(secret="test-secret", allowed_ips=["192.168.1.0/24"])
         )
-        app = create_app(mock_argus, config)
+        app = create_app(mock_argus, mock_zabbix, config)
         async with TestClient(TestServer(app)) as c:
             resp = await _post(c, _problem_payload())
 
         assert resp.status == 403
 
-    async def test_when_ip_in_allowlist_then_it_should_accept(self, mock_argus):
+    async def test_when_ip_in_allowlist_then_it_should_accept(
+        self, mock_argus, mock_zabbix
+    ):
         config = _config(
             webhook=WebhookConfig(secret="test-secret", allowed_ips=["127.0.0.0/8"])
         )
-        app = create_app(mock_argus, config)
+        app = create_app(mock_argus, mock_zabbix, config)
         async with TestClient(TestServer(app)) as c:
             resp = await _post(c, _problem_payload())
 
@@ -186,6 +198,55 @@ class TestHandleProblem:
 
         call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
         assert call_kwargs["level"] == 5
+
+
+class TestHostgroupFilter:
+    async def test_when_host_in_allowed_group_then_it_should_create_incident(
+        self, mock_argus, mock_zabbix
+    ):
+        mock_zabbix.get_hostgroups_for_host.return_value = ["Linux servers"]
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+        app = create_app(mock_argus, mock_zabbix, config)
+        async with TestClient(TestServer(app)) as c:
+            resp = await _post(c, _problem_payload())
+
+        assert resp.status == 201
+        mock_argus.create_incident_from_problem.assert_awaited_once()
+
+    async def test_when_host_not_in_allowed_group_then_it_should_ignore(
+        self, mock_argus, mock_zabbix
+    ):
+        mock_zabbix.get_hostgroups_for_host.return_value = ["Windows servers"]
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+        app = create_app(mock_argus, mock_zabbix, config)
+        async with TestClient(TestServer(app)) as c:
+            resp = await _post(c, _problem_payload())
+            body = await resp.json()
+
+        assert resp.status == 200
+        assert body["status"] == "ignored"
+        mock_argus.create_incident_from_problem.assert_not_awaited()
+
+    async def test_when_hostgroups_resolved_then_it_should_tag_incident(
+        self, mock_argus, mock_zabbix
+    ):
+        mock_zabbix.get_hostgroups_for_host.return_value = ["Linux servers"]
+        app = create_app(mock_argus, mock_zabbix, _config())
+        async with TestClient(TestServer(app)) as c:
+            await _post(c, _problem_payload())
+
+        call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
+        assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
+
+    async def test_when_tags_disabled_and_no_filter_then_it_should_skip_lookup(
+        self, mock_argus, mock_zabbix
+    ):
+        config = _config(tags=TagsConfig(include_hostgroups=False))
+        app = create_app(mock_argus, mock_zabbix, config)
+        async with TestClient(TestServer(app)) as c:
+            await _post(c, _problem_payload())
+
+        mock_zabbix.get_hostgroups_for_host.assert_not_awaited()
 
 
 class TestHandleResolution:

@@ -8,6 +8,7 @@ from pyargus.models import Incident
 from zabbixargus.config import (
     ArgusConfig,
     Config,
+    FilterConfig,
     SeverityConfig,
     TagsConfig,
     WebhookConfig,
@@ -16,17 +17,18 @@ from zabbixargus.config import (
 from zabbixargus.reconciler import reconcile
 
 
-def _config(webhook_enabled=True, **severity_overrides):
+def _config(webhook_enabled=True, filter=None, **severity_overrides):
     return Config(
         argus=ArgusConfig(url="https://argus", token="t"),
         zabbix=ZabbixConfig(url="https://zabbix", token="t"),
         webhook=WebhookConfig(enabled=webhook_enabled),
         severity=SeverityConfig(**severity_overrides),
+        filter=filter or FilterConfig(),
         tags=TagsConfig(static=["source=zabbix"]),
     )
 
 
-def _problem(eventid, severity="4", name="Test", hostname="web01"):
+def _problem(eventid, severity="4", name="Test", hostname="web01", hostgroups=None):
     return {
         "eventid": eventid,
         "severity": severity,
@@ -34,6 +36,7 @@ def _problem(eventid, severity="4", name="Test", hostname="web01"):
         "clock": "1700000000",
         "tags": [],
         "hosts": [{"host": hostname}],
+        "hostgroups": hostgroups or [],
     }
 
 
@@ -141,6 +144,37 @@ class TestReconcile:
         await reconcile(zabbix, argus, _config())
 
         assert argus.create_incident_from_problem.call_count == 2
+
+
+class TestHostgroupFilter:
+    @pytest.mark.asyncio
+    async def test_when_host_not_in_allowed_group_then_it_should_skip_it(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [
+            _problem("100", hostgroups=["Windows servers"])
+        ]
+        argus.get_open_incidents.return_value = {}
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+
+        await reconcile(zabbix, argus, config)
+
+        argus.create_incident_from_problem.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_host_in_allowed_group_then_it_should_tag_incident(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [
+            _problem("100", hostgroups=["Linux servers"])
+        ]
+        argus.get_open_incidents.return_value = {}
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+
+        await reconcile(zabbix, argus, config)
+
+        call_kwargs = argus.create_incident_from_problem.call_args.kwargs
+        assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
 
 
 class TestReconciliationSummary:

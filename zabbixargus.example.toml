@@ -29,6 +29,11 @@ prefix_hostname = false   # prepend "hostname: " to descriptions missing it
 mapping = { 0 = 5, 1 = 5, 2 = 4, 3 = 3, 4 = 2, 5 = 1 }
 minimum_severity = 0      # sync problems at or above this Zabbix severity
 
+[filter]
+# Only sync problems whose host belongs to one of these Zabbix host groups.
+# Empty (the default) syncs every host group.  Names must match exactly.
+hostgroups = []           # e.g. ["Linux servers", "Network devices/Core"]
+
 [tags]
 static = ["source=zabbix"]  # tags always added to Argus incidents
 include_host = true

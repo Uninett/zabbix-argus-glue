@@ -67,6 +67,20 @@ class SeverityConfig(BaseModel):
     minimum_severity: int = 0
 
 
+class FilterConfig(BaseModel):
+    hostgroups: list[str] = []
+
+    def allows(self, groups: list[str]) -> bool:
+        """Check a host's groups against the host-group allow-list.
+
+        Returns ``True`` when no allow-list is configured (sync
+        everything) or when the host's groups intersect the allow-list.
+        """
+        if not self.hostgroups:
+            return True
+        return bool(set(groups) & set(self.hostgroups))
+
+
 class TagsConfig(BaseModel):
     static: list[str] = []
     include_host: bool = True
@@ -84,7 +98,17 @@ class Config(BaseModel):
     reconciliation: ReconciliationConfig = ReconciliationConfig()
     sync: SyncConfig = SyncConfig()
     severity: SeverityConfig = SeverityConfig()
+    filter: FilterConfig = FilterConfig()
     tags: TagsConfig = TagsConfig()
+
+    def requires_hostgroups(self) -> bool:
+        """Whether host-group data must be fetched at all.
+
+        Resolving a host's groups costs a Zabbix API call, so both sync
+        paths skip it unless the host-group filter or hostgroup tagging
+        is active.
+        """
+        return bool(self.filter.hostgroups) or self.tags.include_hostgroups
 
 
 CONFIG_FILENAME = "zabbixargus.toml"

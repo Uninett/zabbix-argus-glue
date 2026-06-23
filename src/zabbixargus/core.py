@@ -40,7 +40,7 @@ async def run(config: Config, *, _stop: asyncio.Event | None = None):
                 if config.reconciliation.enabled:
                     tg.create_task(run_reconciliation_loop(zabbix, argus, config))
                 if config.webhook.enabled:
-                    tg.create_task(run_webhook_server(argus, config, stop))
+                    tg.create_task(run_webhook_server(argus, zabbix, config, stop))
                 tg.create_task(_wait_for_shutdown(stop))
         except* _Shutdown:
             pass
