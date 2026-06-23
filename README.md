@@ -1,7 +1,7 @@
 # zabbix-argus-glue
 
 A [glue service](https://argus-server.readthedocs.io/en/latest/integrations/glue-services/index.html)
-that synchronizes [Zabbix](https://www.zabbix.com/) 7.4+ problems with
+that synchronizes [Zabbix](https://www.zabbix.com/) 7.2+ problems with
 [Argus](https://github.com/Uninett/Argus) incidents. It translates
 Zabbix problem events into Argus incident state changes, keeping both
 systems in sync.

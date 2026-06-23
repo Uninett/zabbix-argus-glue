@@ -38,7 +38,8 @@ dynamic = ["version"]
 zabbix-argus-glue = "zabbixargus:main"
 
 [project.urls]
-Repository = "https://github.com/Uninett/zabbix-argus-glue"
+GitHub = "https://github.com/Uninett/zabbix-argus-glue"
+Argus = "https://network.geant.org/argus/"
 
 [tool.setuptools_scm]
 
