@@ -95,6 +95,16 @@ class ZabbixClient:
 
         return problems
 
+    async def problem_exists(self, eventid: str) -> bool:
+        """Whether a problem with this event id is currently active.
+
+        Used to confirm a problem is genuinely resolved before closing
+        its Argus incident, rather than trusting that its absence from a
+        bulk fetch means it is gone.
+        """
+        problems = await self.api.problem.get(eventids=[eventid], output=["eventid"])
+        return bool(problems)
+
     async def get_hostgroups_for_host(self, hostname: str) -> list[str]:
         """Return the host groups a host belongs to, with a TTL cache.
 

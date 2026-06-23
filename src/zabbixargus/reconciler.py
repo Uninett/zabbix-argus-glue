@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from zabbixargus.argus_client import ArgusClient
+from zabbixargus.argus_client import ArgusClient, DuplicateIncidentError
 from zabbixargus.config import Config
 from zabbixargus.tags import build_tags
 from zabbixargus.zabbix_client import ZabbixClient, build_details_url
@@ -39,10 +39,13 @@ async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
     eligible = [p for p in problems if int(p["severity"]) >= minimum]
     synced = [p for p in eligible if config.filter.allows(p.get("hostgroups", []))]
     ignored = len(eligible) - len(synced)
-    problem_ids = {p["eventid"] for p in synced}
+    synced_problem_ids = {p["eventid"] for p in synced}
+    fetched_problem_ids = {p["eventid"] for p in problems}
 
     created = await _create_missing(synced, argus_incidents, argus, config)
-    closed = await _close_stale(problem_ids, argus_incidents, argus)
+    closed = await _close_stale(
+        synced_problem_ids, fetched_problem_ids, argus_incidents, zabbix, argus
+    )
 
     _log_reconciliation_summary(created, closed, ignored, config)
 
@@ -87,6 +90,11 @@ async def _create_missing(
         try:
             await _create_incident_for_problem(problem, argus, config)
             created += 1
+        except DuplicateIncidentError:
+            # Recurs every pass until the problem clears, so log at DEBUG.
+            log.debug(
+                "Problem %s already has an Argus incident; not recreating", eventid
+            )
         except Exception:
             log.exception("Failed to create incident for problem %s", eventid)
     return created
@@ -131,16 +139,52 @@ async def _create_incident_for_problem(
 
 
 async def _close_stale(
-    open_problem_ids: set[str],
+    synced_problem_ids: set[str],
+    fetched_problem_ids: set[str],
     argus_incidents: dict,
+    zabbix: ZabbixClient,
     argus: ArgusClient,
 ) -> int:
+    """Close incidents whose Zabbix problem is no longer in sync scope.
+
+    For each open incident whose problem is not in ``synced_problem_ids``:
+
+    - if the problem is still in the latest fetch from Zabbix but
+      excluded by the filter/severity rules, close the incident — the
+      glue no longer syncs it, and the webhook won't update it either,
+      so leaving it open would orphan it;
+    - if the problem is absent from the fetch entirely, re-confirm with
+      Zabbix (``problem_exists``) that it is genuinely resolved before
+      closing, so a flaky or partial fetch does not close a live
+      incident.
+
+    An empty fetch is treated as a likely transient failure and closes
+    nothing.
+    """
+    if argus_incidents and not fetched_problem_ids:
+        log.warning(
+            "Skipping stale-incident close: Zabbix returned no problems "
+            "(likely a transient fetch failure)"
+        )
+        return 0
+
     closed = 0
     for source_id, incident in argus_incidents.items():
-        if source_id not in open_problem_ids:
-            try:
-                await argus.resolve_incident(incident)
-                closed += 1
-            except Exception:
-                log.exception("Failed to close Argus incident %s", incident.pk)
+        if source_id in synced_problem_ids:
+            continue
+        try:
+            if source_id not in fetched_problem_ids and await zabbix.problem_exists(
+                source_id
+            ):
+                log.warning(
+                    "Not closing incident %s: Zabbix problem %s is still active "
+                    "but was missing from the latest fetch",
+                    incident.pk,
+                    source_id,
+                )
+                continue
+            await argus.resolve_incident(incident)
+            closed += 1
+        except Exception:
+            log.exception("Failed to close Argus incident %s", incident.pk)
     return closed

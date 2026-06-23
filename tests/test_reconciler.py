@@ -55,6 +55,7 @@ def _incident(source_incident_id, pk=1):
 def zabbix():
     client = AsyncMock()
     client.get_problems_with_hosts = AsyncMock(return_value=[])
+    client.problem_exists = AsyncMock(return_value=False)
     return client
 
 
@@ -63,6 +64,7 @@ def argus():
     client = AsyncMock()
     client.get_open_incidents = AsyncMock(return_value={})
     client.create_incident_from_problem = AsyncMock()
+    client.get_incident_by_source_id = AsyncMock(return_value=None)
     client.client = AsyncMock()
     client.client.resolve_incident = AsyncMock()
     return client
@@ -97,7 +99,9 @@ class TestReconcile:
     async def test_when_argus_incident_has_no_matching_problem_then_it_should_close_it(
         self, zabbix, argus
     ):
-        zabbix.get_problems_with_hosts.return_value = []
+        # A different problem keeps the snapshot non-empty; incident 100's
+        # problem is genuinely gone (problem_exists -> False), so it closes.
+        zabbix.get_problems_with_hosts.return_value = [_problem("200")]
         argus.get_open_incidents.return_value = {"100": _incident("100")}
 
         await reconcile(zabbix, argus, _config())
@@ -175,6 +179,72 @@ class TestHostgroupFilter:
 
         call_kwargs = argus.create_incident_from_problem.call_args.kwargs
         assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
+
+
+class TestCloseStale:
+    @pytest.mark.asyncio
+    async def test_when_problem_still_active_in_zabbix_then_it_should_not_close(
+        self, zabbix, argus
+    ):
+        # Missing from the snapshot but Zabbix still has it (a flaky fetch),
+        # so the incident must not be closed.
+        zabbix.get_problems_with_hosts.return_value = [_problem("200")]
+        zabbix.problem_exists.return_value = True
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
+
+        await reconcile(zabbix, argus, _config())
+
+        argus.resolve_incident.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_zabbix_returns_no_problems_then_it_should_not_close(
+        self, zabbix, argus
+    ):
+        # An empty snapshot is treated as a likely fetch glitch, not mass
+        # resolution, so open incidents are left alone.
+        zabbix.get_problems_with_hosts.return_value = []
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
+
+        await reconcile(zabbix, argus, _config())
+
+        argus.resolve_incident.assert_not_called()
+        zabbix.problem_exists.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_problem_excluded_by_filter_then_it_should_close_without_verify(
+        self, zabbix, argus
+    ):
+        # Present in the snapshot but excluded by the filter: its incident
+        # closes as before, without a verify round-trip.
+        zabbix.get_problems_with_hosts.return_value = [
+            _problem("100", hostgroups=["Windows servers"])
+        ]
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+
+        await reconcile(zabbix, argus, config)
+
+        argus.resolve_incident.assert_called_once()
+        zabbix.problem_exists.assert_not_called()
+
+
+class TestDuplicateOnCreate:
+    @pytest.mark.asyncio
+    async def test_when_create_hits_duplicate_then_it_should_skip_quietly(
+        self, zabbix, argus
+    ):
+        from zabbixargus.argus_client import DuplicateIncidentError
+
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+        argus.create_incident_from_problem.side_effect = DuplicateIncidentError("100")
+
+        # Must not raise; the reconciler skips quietly without an extra lookup
+        # (it recurs every pass, so it stays at DEBUG and does no API call).
+        await reconcile(zabbix, argus, _config())
+
+        argus.create_incident_from_problem.assert_awaited_once()
+        argus.get_incident_by_source_id.assert_not_called()
 
 
 class TestReconciliationSummary:
