@@ -9,6 +9,7 @@ from zabbixargus.config import (
     Config,
     FilterConfig,
     TagsConfig,
+    WebhookConfig,
     ZabbixConfig,
     find_config,
     load_config,
@@ -208,6 +209,23 @@ class TestFilterConfigAllows:
 
     def test_when_host_has_no_groups_and_allowlist_set_then_it_should_reject(self):
         assert not FilterConfig(hostgroups=["Linux servers"]).allows([])
+
+
+class TestWebhookSecret:
+    def test_when_secret_in_config_then_it_should_keep_it(self, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "from-env")
+
+        assert WebhookConfig(secret="from-config").secret == "from-config"
+
+    def test_when_no_secret_then_it_should_fall_back_to_env(self, monkeypatch):
+        monkeypatch.setenv("WEBHOOK_SECRET", "from-env")
+
+        assert WebhookConfig().secret == "from-env"
+
+    def test_when_no_secret_anywhere_then_it_should_stay_empty(self, monkeypatch):
+        monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
+
+        assert WebhookConfig().secret == ""
 
 
 class TestRequiresHostgroups:

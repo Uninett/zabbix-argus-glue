@@ -11,7 +11,7 @@ token = "xyz789..."       # or set ZABBIX_TOKEN env var
 enabled = true
 listen = "0.0.0.0"
 port = 8080
-secret = "shared-secret"  # validates incoming webhook POSTs
+secret = "shared-secret"  # validates incoming webhook POSTs; or set WEBHOOK_SECRET env var
 allowed_ips = []          # optional IP allowlist, e.g. ["10.0.0.5/32"]
 # When behind a reverse proxy, log the client IP from this forwarded
 # header instead of the proxy's peer address.  Empty = log peer address.

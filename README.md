@@ -62,7 +62,10 @@ The program searches for `zabbixargus.toml` in the following locations
 You can override this with `--config PATH`.
 
 API tokens can also be provided via the `ARGUS_TOKEN` and `ZABBIX_TOKEN`
-environment variables instead of storing them in the config file.
+environment variables instead of storing them in the config file. The
+webhook shared secret can likewise be set via `WEBHOOK_SECRET` instead of
+`[webhook] secret`, so it can be sourced from a Kubernetes Secret or vault
+rather than a plaintext config file.
 
 Incident detail links point back to the Zabbix problem page using
 relative URLs (e.g. `tr_events.php?triggerid=...&eventid=...`). The
