@@ -15,7 +15,7 @@ from zabbixargus.config import (
     WebhookConfig,
     ZabbixConfig,
 )
-from zabbixargus.webhook import create_app
+from zabbixargus.webhook import _access_log_format, create_app
 
 
 def _config(**overrides):
@@ -427,3 +427,11 @@ class TestTimestampParsing:
         start = call_kwargs["start_time"]
         assert start.tzinfo is timezone.utc
         assert int(start.timestamp()) == 1745326800
+
+
+class TestAccessLogFormat:
+    def test_when_no_header_configured_then_it_should_log_peer_address(self):
+        assert _access_log_format("").startswith("%a ")
+
+    def test_when_header_configured_then_it_should_log_that_header(self):
+        assert _access_log_format("X-Forwarded-For").startswith("%{X-Forwarded-For}i ")

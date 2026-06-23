@@ -49,6 +49,7 @@ class WebhookConfig(BaseModel):
     port: int = 8080
     secret: str = ""
     allowed_ips: list[str] = []
+    real_ip_header: str = ""
 
 
 class ReconciliationConfig(BaseModel):
