@@ -183,7 +183,7 @@ async def _close_stale(
                     source_id,
                 )
                 continue
-            await argus.resolve_incident(incident)
+            await argus.resolve_incident(incident, "Resolved by reconciliation")
             closed += 1
         except Exception:
             log.exception("Failed to close Argus incident %s", incident.pk)

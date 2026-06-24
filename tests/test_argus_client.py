@@ -1,5 +1,6 @@
 """Tests for the async Argus adapter."""
 
+from datetime import timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -230,3 +231,71 @@ class TestGetIncidentBySourceId:
         result = await client.get_incident_by_source_id("100")
 
         assert result is None
+
+
+class TestResolveIncident:
+    @pytest.mark.asyncio
+    async def test_when_reason_given_then_it_should_post_it_as_description(
+        self, config
+    ):
+        client = ArgusClient(config)
+        client.client.resolve_incident = AsyncMock()
+
+        await client.resolve_incident(_make_incident("100"), "Resolved in Zabbix")
+
+        client.client.resolve_incident.assert_awaited_once()
+        kwargs = client.client.resolve_incident.call_args.kwargs
+        assert kwargs["description"] == "Resolved in Zabbix"
+
+    @pytest.mark.asyncio
+    async def test_when_no_reason_given_then_it_should_not_post_a_description(
+        self, config
+    ):
+        client = ArgusClient(config)
+        client.client.resolve_incident = AsyncMock()
+
+        await client.resolve_incident(_make_incident("100"))
+
+        kwargs = client.client.resolve_incident.call_args.kwargs
+        assert kwargs["description"] is None
+
+    @pytest.mark.asyncio
+    async def test_when_resolving_then_it_should_use_tz_aware_utc_timestamp(
+        self, config
+    ):
+        client = ArgusClient(config)
+        client.client.resolve_incident = AsyncMock()
+
+        await client.resolve_incident(_make_incident("100"))
+
+        timestamp = client.client.resolve_incident.call_args.kwargs["timestamp"]
+        assert timestamp.tzinfo == timezone.utc
+
+
+class TestResolveBySourceId:
+    @pytest.mark.asyncio
+    async def test_when_source_id_matches_then_it_should_resolve_in_zabbix(
+        self, config
+    ):
+        client = ArgusClient(config)
+        client.get_open_incidents = AsyncMock(
+            return_value={"100": _make_incident("100")}
+        )
+        client.client.resolve_incident = AsyncMock()
+
+        result = await client.resolve_by_source_id("100")
+
+        assert result is True
+        kwargs = client.client.resolve_incident.call_args.kwargs
+        assert kwargs["description"] == "Resolved in Zabbix"
+
+    @pytest.mark.asyncio
+    async def test_when_source_id_unknown_then_it_should_return_false(self, config):
+        client = ArgusClient(config)
+        client.get_open_incidents = AsyncMock(return_value={})
+        client.client.resolve_incident = AsyncMock()
+
+        result = await client.resolve_by_source_id("999")
+
+        assert result is False
+        client.client.resolve_incident.assert_not_awaited()
