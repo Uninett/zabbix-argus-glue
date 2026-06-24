@@ -165,11 +165,33 @@ account or use an existing user.
 Go to **Users → Users** and create or edit a user:
 
 - **Username:** e.g. `argus-glue`
-- **Groups:** A group with read access to the hosts you want to sync
+- **Role:** a **User**-type role (with the problem-update actions
+  enabled) is enough — the account only fires webhooks and, once
+  acknowledgement sync lands, acts on problems. Avoid **Super admin**: a
+  credential-bearing service account should not hold full configuration
+  rights.
+- **Groups:** a user group with **read** access to the hosts you want to
+  sync. (Acknowledgement sync back to Zabbix additionally needs
+  **read-write** access to those host groups.)
 - **Media tab → Add:**
   - **Type:** `Argus`
   - **Send to:** `argus` *(required by Zabbix but ignored by webhooks)*
   - **Enabled:** checked
+
+#### Resolving "Inaccessible user" in update notifications
+
+Update notifications carry `{USER.FULLNAME}` — the person who
+acknowledged or commented on a problem. Zabbix only reveals a user's
+name to accounts that **share at least one user group** with them;
+otherwise the macro resolves to the literal string `Inaccessible user`
+(a privacy safeguard introduced by
+[ZBX-12441](https://support.zabbix.com/browse/ZBX-12441)). To make names
+resolve **without** widening the service account's access, create a user
+group with **no permissions** (e.g. `argus-visibility`) and add both the
+`argus-glue` account and every operator who acknowledges problems to it.
+Membership alone establishes visibility; the empty permission set keeps
+it least-privilege. Granting **Super admin** also works but
+over-privileges the account — don't.
 
 ### 3. Create a trigger action
 
