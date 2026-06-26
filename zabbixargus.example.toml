@@ -13,6 +13,9 @@ listen = "0.0.0.0"
 port = 8080
 secret = "shared-secret"  # validates incoming webhook POSTs
 allowed_ips = []          # optional IP allowlist, e.g. ["10.0.0.5/32"]
+# When behind a reverse proxy, log the client IP from this forwarded
+# header instead of the proxy's peer address.  Empty = log peer address.
+real_ip_header = ""       # e.g. "X-Forwarded-For" or "X-Real-IP"
 
 [reconciliation]
 enabled = true

@@ -98,7 +98,9 @@ async def run_webhook_server(
 ):
     """Run the webhook HTTP server until the stop event is set."""
     app = create_app(argus, zabbix, config)
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(
+        app, access_log_format=_access_log_format(config.webhook.real_ip_header)
+    )
     await runner.setup()
     site = web.TCPSite(runner, config.webhook.listen, config.webhook.port)
     await site.start()
@@ -307,3 +309,15 @@ def _error_response(status_cls, message: str):
         text=json.dumps({"error": message}),
         content_type="application/json",
     )
+
+
+def _access_log_format(real_ip_header: str) -> str:
+    """Build the aiohttp access-log format string.
+
+    Defaults to aiohttp's standard format.  When ``real_ip_header`` is
+    set (e.g. behind a reverse proxy that forwards the client IP), the
+    client field is taken from that request header instead of the peer
+    address, so logs show the real client rather than the proxy.
+    """
+    client = f"%{{{real_ip_header}}}i" if real_ip_header else "%a"
+    return f'{client} %t "%r" %s %b "%{{Referer}}i" "%{{User-Agent}}i"'

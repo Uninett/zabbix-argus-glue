@@ -50,6 +50,7 @@ listen = "127.0.0.1"
 port = 9090
 secret = "my-secret"
 allowed_ips = ["10.0.0.0/8"]
+real_ip_header = "X-Forwarded-For"
 
 [reconciliation]
 enabled = false
@@ -86,6 +87,7 @@ class TestLoadConfig:
         assert config.argus.timeout == 10
         assert config.webhook.enabled is True
         assert config.webhook.port == 8080
+        assert config.webhook.real_ip_header == ""
         assert config.reconciliation.interval == 60
         assert config.sync.ack_enabled is False
         assert config.severity.minimum_severity == 0
@@ -105,6 +107,7 @@ class TestLoadConfig:
         assert config.webhook.port == 9090
         assert config.webhook.secret == "my-secret"
         assert config.webhook.allowed_ips == ["10.0.0.0/8"]
+        assert config.webhook.real_ip_header == "X-Forwarded-For"
         assert config.reconciliation.enabled is False
         assert config.reconciliation.interval == 120
         assert config.sync.ack_enabled is True
