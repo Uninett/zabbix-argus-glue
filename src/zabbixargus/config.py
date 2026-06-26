@@ -51,6 +51,15 @@ class WebhookConfig(BaseModel):
     allowed_ips: list[str] = []
     real_ip_header: str = ""
 
+    @model_validator(mode="after")
+    def secret_from_env(self):
+        # Unlike the API tokens, the webhook secret is optional (an empty
+        # secret disables the header check), so fall back to the env var
+        # but do not require it.
+        if not self.secret:
+            self.secret = os.environ.get("WEBHOOK_SECRET", "")
+        return self
+
 
 class ReconciliationConfig(BaseModel):
     enabled: bool = True
