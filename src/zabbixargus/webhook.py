@@ -255,7 +255,7 @@ async def _handle_problem(
         )
         raise _error_response(web.HTTPInternalServerError, "argus error")
 
-    log.info("Webhook: created incident for problem %s", payload.eventid)
+    log.debug("Webhook: created incident for problem %s", payload.eventid)
     return web.json_response({"status": "created"}, status=201)
 
 
