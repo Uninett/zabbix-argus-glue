@@ -1,5 +1,10 @@
 # zabbix-argus-glue
 
+[![PyPI version](https://img.shields.io/pypi/v/zabbix-argus-glue)](https://pypi.org/project/zabbix-argus-glue/)
+[![Supported Python versions](https://img.shields.io/pypi/pyversions/zabbix-argus-glue)](https://pypi.org/project/zabbix-argus-glue/)
+[![Tests](https://github.com/Uninett/zabbix-argus-glue/actions/workflows/test.yml/badge.svg)](https://github.com/Uninett/zabbix-argus-glue/actions/workflows/test.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A [glue service](https://argus-server.readthedocs.io/en/latest/integrations/glue-services/index.html)
 that synchronizes [Zabbix](https://www.zabbix.com/) 7.2+ problems with
 [Argus](https://github.com/Uninett/Argus) incidents. It translates
