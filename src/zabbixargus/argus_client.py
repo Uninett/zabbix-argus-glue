@@ -5,10 +5,26 @@ from datetime import datetime, timezone
 
 from pyargus.async_client import AsyncClient
 from pyargus.models import Incident
+from simple_rest_client.exceptions import ClientError
 
 from zabbixargus.config import ArgusConfig
 
 log = logging.getLogger(__name__)
+
+
+class DuplicateIncidentError(Exception):
+    """Raised when Argus already has an incident for a source_incident_id.
+
+    Argus enforces source_incident_id uniqueness per source across both
+    open and closed incidents, so a create can be rejected because an
+    incident already exists — commonly one that has since been closed.
+    """
+
+    def __init__(self, source_incident_id: str):
+        self.source_incident_id = source_incident_id
+        super().__init__(
+            f"Argus already has an incident for source_incident_id {source_incident_id}"
+        )
 
 
 class ArgusClient:
@@ -84,10 +100,67 @@ class ArgusClient:
             start_time=start_time or datetime.now(timezone.utc),
             end_time=datetime.max,
         )
-        result = await self.client.post_incident(incident)
+        try:
+            result = await self.client.post_incident(incident)
+        except ClientError as e:
+            if _is_duplicate_source_id(e):
+                raise DuplicateIncidentError(source_incident_id) from e
+            raise
         log.info(
             "Created Argus incident %s for Zabbix problem %s",
             result.pk,
             source_incident_id,
         )
         return result
+
+    async def get_incident_by_source_id(
+        self, source_incident_id: str
+    ) -> Incident | None:
+        """Best-effort lookup of an incident (open or closed) by source id.
+
+        Used to enrich logging when a create is rejected as a duplicate.
+        Returns ``None`` if it cannot be found or the lookup fails, and
+        never raises.  The explicit match guard keeps it correct even if
+        Argus ignores the ``source_incident_id`` filter.
+        """
+        try:
+            async for incident in self.client.get_my_incidents(
+                source_incident_id=source_incident_id
+            ):
+                if incident.source_incident_id == source_incident_id:
+                    return incident
+        except Exception:
+            log.debug(
+                "Could not look up existing incident for problem %s",
+                source_incident_id,
+                exc_info=True,
+            )
+        return None
+
+
+def _is_duplicate_source_id(error: ClientError) -> bool:
+    """Check whether an Argus 400 response indicates a duplicate source ID."""
+    response = getattr(error, "response", None)
+    if response is None or response.status_code != 400:
+        return False
+    return "source_incident_id" in str(response.body)
+
+
+def describe_existing_incident(
+    source_incident_id: str, incident: Incident | None
+) -> str:
+    """Build a log message explaining a skipped duplicate create."""
+    if incident is None:
+        return (
+            f"problem {source_incident_id}: Argus already has an incident "
+            f"(could not look it up); not recreating"
+        )
+    if incident.open:
+        return (
+            f"problem {source_incident_id}: Argus already has open incident "
+            f"{incident.pk}; not recreating"
+        )
+    return (
+        f"problem {source_incident_id}: Argus already has incident {incident.pk}, "
+        f"closed at {incident.end_time}; not recreating"
+    )

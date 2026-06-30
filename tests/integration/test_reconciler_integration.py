@@ -73,8 +73,10 @@ async def test_when_problem_resolved_then_reconcile_should_close_argus_incident(
     incidents = await argus.get_open_incidents()
     assert "reconcile-300" in incidents
 
-    # Problem disappears from Zabbix, second reconcile should close it
-    zabbix.get_problems_with_hosts.return_value = []
+    # Problem 300 resolves; a different problem keeps the snapshot non-empty
+    # so the close path runs, and verify-before-close confirms 300 is gone.
+    zabbix.get_problems_with_hosts.return_value = [_problem("reconcile-400")]
+    zabbix.problem_exists = AsyncMock(return_value=False)
     await reconcile(zabbix, argus, _config())
 
     incidents = await argus.get_open_incidents()
