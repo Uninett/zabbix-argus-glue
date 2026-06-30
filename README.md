@@ -105,6 +105,10 @@ The webhook receiver listens for HTTP POSTs from Zabbix. To use it,
 you need to configure a webhook media type and a trigger action in
 Zabbix.
 
+By default the receiver binds `0.0.0.0:8080`; change the bind address
+and port with `[webhook] listen` and `port`, or turn the receiver off
+entirely with `[webhook] enabled = false`.
+
 Requires Zabbix 7.2 or later (the setup uses the `{EVENT.TIMESTAMP}`
 macro, introduced after the 7.0 LTS).
 
