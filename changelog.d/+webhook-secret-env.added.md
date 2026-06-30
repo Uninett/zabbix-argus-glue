@@ -1,1 +1,0 @@
-The webhook shared secret can now be supplied via the `WEBHOOK_SECRET` environment variable when `[webhook] secret` is unset, so it can be sourced from a Kubernetes Secret or vault instead of a plaintext config file.

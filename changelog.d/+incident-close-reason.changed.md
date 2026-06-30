@@ -1,1 +1,0 @@
-Incidents are now closed with a short reason recorded on the closing event, so the Argus event log shows why an incident was resolved: `Resolved in Zabbix` when a Zabbix problem recovers, or `Resolved by reconciliation` when the reconciliation sweep cleans up drift. Previously the closing event carried no description.
