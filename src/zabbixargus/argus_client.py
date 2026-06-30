@@ -52,13 +52,20 @@ class ArgusClient:
                 incidents[incident.source_incident_id] = incident
         return incidents
 
-    async def resolve_incident(self, incident: Incident):
-        """Resolve an Argus incident."""
+    async def resolve_incident(self, incident: Incident, description: str = ""):
+        """Resolve an Argus incident, recording an optional close reason.
+
+        The description is posted as the text of the closing event, so a
+        reader of the Argus event log can see why the incident was
+        resolved (e.g. a Zabbix recovery vs. a reconciliation sweep).
+        """
         # Pass an explicit tz-aware UTC timestamp; pyargus defaults to a
         # naive datetime.now() which Argus interprets as the server's
         # local timezone, shifting the recorded end_time.
         await self.client.resolve_incident(
-            incident, timestamp=datetime.now(timezone.utc)
+            incident,
+            timestamp=datetime.now(timezone.utc),
+            description=description or None,
         )
         log.info("Resolved Argus incident %s", incident.pk)
 
@@ -72,7 +79,7 @@ class ArgusClient:
         incident = incidents.get(source_incident_id)
         if incident is None:
             return False
-        await self.resolve_incident(incident)
+        await self.resolve_incident(incident, "Resolved in Zabbix")
         return True
 
     async def create_incident_from_problem(
