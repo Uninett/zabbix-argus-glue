@@ -65,6 +65,11 @@ dev = [
     {include-group = "test"},
 ]
 
+[tool.uv]
+# Older certifi bundles trust the compromised eMudhra/emSign CAs:
+# https://discuss.python.org/t/109576
+constraint-dependencies = ["certifi>=2026.10.19"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
