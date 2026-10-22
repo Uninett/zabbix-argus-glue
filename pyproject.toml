@@ -71,6 +71,13 @@ dev = [
 constraint-dependencies = ["certifi>=2026.10.19"]
 
 [tool.pytest.ini_options]
+# Pin the Argus server image used by the integration tests. The argus:latest
+# image (2.10.0 and 2.10.1 alike) dies at Django setup with
+# "ModuleNotFoundError: No module named 'django_tasks'". Argus lists
+# django_tasks in INSTALLED_APPS, but django-tasks-db 0.13.0 no longer
+# depends on django-tasks. 2.9.1 still bundles it.
+# TODO: Drop this pin once a fixed Argus image is published
+addopts = "--argus-version 2.9.1"
 asyncio_mode = "auto"
 markers = [
     "integration: requires a running Argus server (Docker)",
