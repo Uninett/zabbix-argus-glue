@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.1.1] - 2026-10-22
+
+### Security
+
+- Require certifi 2026.10.19 or newer in the locked dependencies, as older
+  bundles still trust the compromised eMudhra/emSign root CA.
+
+
 ## [0.1.0] - 2026-06-30
 
 Initial release.
