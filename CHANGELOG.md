@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.1.2] - 2026-10-22
+
+### Security
+
+- Upgrade all locked dependencies, including anyio 4.15.1 (fixes
+  CVE-2026-63374, TLS certificate spoofing) and aiohttp 3.14.5 (fixes several
+  denial-of-service vulnerabilities).
+
+
 ## [0.1.1] - 2026-10-22
 
 ### Security
