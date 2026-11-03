@@ -100,6 +100,36 @@ class TestCreateIncidentFromProblem:
         assert posted.tags == {"host": "web01", "trigger": "High CPU"}
 
     @pytest.mark.asyncio
+    async def test_when_tag_key_repeats_then_it_should_post_every_value(self, config):
+        client = ArgusClient(config)
+        client.client.post_incident = AsyncMock(return_value=_make_incident("100"))
+
+        await client.create_incident_from_problem(
+            description="High CPU",
+            source_incident_id="100",
+            level=2,
+            tags=[
+                ("host", "web01"),
+                ("hostgroup", "Linux servers"),
+                ("hostgroup", "Web servers"),
+                ("hostgroup", "Production"),
+            ],
+        )
+
+        posted = client.client.post_incident.call_args[0][0]
+        assert posted.tags.getlist("hostgroup") == [
+            "Linux servers",
+            "Web servers",
+            "Production",
+        ]
+        assert posted.to_json()["tags"] == [
+            {"tag": "host=web01"},
+            {"tag": "hostgroup=Linux servers"},
+            {"tag": "hostgroup=Web servers"},
+            {"tag": "hostgroup=Production"},
+        ]
+
+    @pytest.mark.asyncio
     async def test_when_prefix_hostname_enabled_then_it_should_include_host(
         self, config
     ):
