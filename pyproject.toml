@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp",
-    "argus-api-client>=0.7.0",
+    "argus-api-client>=0.8.0",
     "platformdirs",
     "pydantic>=2",
     "zabbix-utils[async]",
