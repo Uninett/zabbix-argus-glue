@@ -44,6 +44,7 @@ async def test_when_started_then_run_should_call_reconcile_before_shutdown():
             "zabbixargus.core.run_reconciliation_loop",
             side_effect=fake_reconciliation_loop,
         ),
+        patch("zabbixargus.core.run_webhook_server", new_callable=AsyncMock),
     ):
         mock_zabbix = AsyncMock()
         mock_zabbix_cls.return_value = mock_zabbix
@@ -70,6 +71,7 @@ async def test_when_reconciliation_disabled_then_run_should_not_start_loop():
         patch("zabbixargus.core.ZabbixClient") as mock_zabbix_cls,
         patch("zabbixargus.core.ArgusClient"),
         patch("zabbixargus.core.run_reconciliation_loop") as mock_loop,
+        patch("zabbixargus.core.run_webhook_server", new_callable=AsyncMock),
     ):
         mock_zabbix = AsyncMock()
         mock_zabbix_cls.return_value = mock_zabbix
