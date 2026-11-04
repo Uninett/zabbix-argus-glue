@@ -16,20 +16,27 @@ from zabbixargus.config import (
 from zabbixargus.core import run
 
 
-def _config(**overrides):
-    defaults = dict(
-        argus=ArgusConfig(url="https://argus", token="t"),
-        zabbix=ZabbixConfig(url="https://zabbix", token="t"),
-        tags=TagsConfig(static=["source=zabbix"]),
-        reconciliation=ReconciliationConfig(enabled=True, interval=1),
-    )
-    defaults.update(overrides)
-    return Config(**defaults)
+@pytest.fixture
+def make_config(unused_tcp_port):
+    # Should a test start a real webhook server, keep it on loopback and on a
+    # free port so it never collides with or is exposed to anything else.
+    def make(**overrides):
+        defaults = dict(
+            argus=ArgusConfig(url="https://argus", token="t"),
+            zabbix=ZabbixConfig(url="https://zabbix", token="t"),
+            tags=TagsConfig(static=["source=zabbix"]),
+            reconciliation=ReconciliationConfig(enabled=True, interval=1),
+            webhook=WebhookConfig(listen="127.0.0.1", port=unused_tcp_port),
+        )
+        defaults.update(overrides)
+        return Config(**defaults)
+
+    return make
 
 
 @pytest.mark.asyncio
-async def test_when_started_then_run_should_call_reconcile_before_shutdown():
-    config = _config()
+async def test_when_started_then_run_should_call_reconcile_before_shutdown(make_config):
+    config = make_config()
     stop = asyncio.Event()
     reconcile_called = asyncio.Event()
 
@@ -63,8 +70,10 @@ async def test_when_started_then_run_should_call_reconcile_before_shutdown():
 
 
 @pytest.mark.asyncio
-async def test_when_reconciliation_disabled_then_run_should_not_start_loop():
-    config = _config(reconciliation=ReconciliationConfig(enabled=False, interval=60))
+async def test_when_reconciliation_disabled_then_run_should_not_start_loop(make_config):
+    config = make_config(
+        reconciliation=ReconciliationConfig(enabled=False, interval=60)
+    )
     stop = asyncio.Event()
 
     with (
@@ -90,8 +99,9 @@ async def test_when_reconciliation_disabled_then_run_should_not_start_loop():
 
 
 @pytest.mark.asyncio
-async def test_when_webhook_enabled_then_run_should_start_server():
-    config = _config(webhook=WebhookConfig(enabled=True))
+async def test_when_webhook_enabled_then_run_should_start_server(make_config):
+    config = make_config()
+    assert config.webhook.enabled
     stop = asyncio.Event()
 
     with (
@@ -125,8 +135,8 @@ async def test_when_webhook_enabled_then_run_should_start_server():
 
 
 @pytest.mark.asyncio
-async def test_when_webhook_disabled_then_run_should_not_start_server():
-    config = _config(webhook=WebhookConfig(enabled=False))
+async def test_when_webhook_disabled_then_run_should_not_start_server(make_config):
+    config = make_config(webhook=WebhookConfig(enabled=False))
     stop = asyncio.Event()
 
     with (
