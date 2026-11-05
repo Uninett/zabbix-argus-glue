@@ -54,6 +54,9 @@ async def reconcile(
     synced_problem_ids = {p["eventid"] for p in synced}
     fetched_problem_ids = {p["eventid"] for p in problems}
 
+    # Remove problems from `known_duplicates` that are now closed in Zabbix
+    known_duplicates &= fetched_problem_ids
+
     created = await _create_missing(
         synced, argus_incidents, known_duplicates, argus, config
     )
