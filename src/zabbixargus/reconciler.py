@@ -57,18 +57,18 @@ async def reconcile(
     # Remove problems from `known_duplicates` that are now closed in Zabbix
     known_duplicates &= fetched_problem_ids
 
-    created = await _create_missing(
+    created, duplicates = await _create_missing(
         synced, argus_incidents, known_duplicates, argus, config
     )
     closed = await _close_stale(
         synced_problem_ids, fetched_problem_ids, argus_incidents, zabbix, argus
     )
 
-    _log_reconciliation_summary(created, closed, ignored, config)
+    _log_reconciliation_summary(created, closed, ignored, duplicates, config)
 
 
 def _log_reconciliation_summary(
-    created: int, closed: int, ignored: int, config: Config
+    created: int, closed: int, ignored: int, duplicates: int, config: Config
 ):
     """Summarize a reconciliation pass.
 
@@ -77,18 +77,25 @@ def _log_reconciliation_summary(
     misconfigured, or first run); log at WARNING so it is easy to
     spot.  Otherwise log at INFO.  Zero drift is logged at DEBUG.
     ``ignored`` counts problems excluded by the host-group filter and
-    is reported alongside either way.
+    ``duplicates`` counts problems skipped because Argus already has an
+    incident for them; both are reported alongside either way.
     """
     if created == 0 and closed == 0:
-        log.debug("Reconciliation pass: no drift (%d ignored by filter)", ignored)
+        log.debug(
+            "Reconciliation pass: no drift (%d ignored by filter, %d already in Argus)",
+            ignored,
+            duplicates,
+        )
         return
     level = logging.WARNING if config.webhook.enabled else logging.INFO
     log.log(
         level,
-        "Reconciliation pass: created %d, closed %d (%d ignored by filter)",
+        "Reconciliation pass: created %d, closed %d (%d ignored by filter, "
+        "%d already in Argus)",
         created,
         closed,
         ignored,
+        duplicates,
     )
 
 
@@ -98,13 +105,20 @@ async def _create_missing(
     known_duplicates: set[str],
     argus: ArgusClient,
     config: Config,
-) -> int:
+) -> tuple[int, int]:
+    """Create incidents for problems that have none open in Argus.
+
+    Returns the number of incidents created and the number of problems
+    skipped because Argus already has an incident for them.
+    """
     created = 0
+    duplicates = 0
     for problem in problems:
         eventid = problem["eventid"]
         if eventid in argus_incidents:
             continue
         if eventid in known_duplicates:
+            duplicates += 1
             continue
 
         try:
@@ -112,6 +126,7 @@ async def _create_missing(
             created += 1
         except DuplicateIncidentError:
             known_duplicates.add(eventid)
+            duplicates += 1
             log.info(
                 "Problem %s already has an Argus incident, probably closed; "
                 "not recreating it until the problem clears in Zabbix",
@@ -119,7 +134,7 @@ async def _create_missing(
             )
         except Exception:
             log.exception("Failed to create incident for problem %s", eventid)
-    return created
+    return created, duplicates
 
 
 async def _create_incident_for_problem(
