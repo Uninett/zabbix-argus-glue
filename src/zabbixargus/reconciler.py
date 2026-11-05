@@ -16,20 +16,34 @@ async def run_reconciliation_loop(
     zabbix: ZabbixClient, argus: ArgusClient, config: Config
 ):
     """Run reconciliation on startup and then at a regular interval."""
+    known_duplicates: set[str] = set()
     while True:
         try:
-            await reconcile(zabbix, argus, config)
+            await reconcile(zabbix, argus, config, known_duplicates)
         except Exception:
             log.exception("Reconciliation failed")
         await asyncio.sleep(config.reconciliation.interval)
 
 
-async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
+async def reconcile(
+    zabbix: ZabbixClient,
+    argus: ArgusClient,
+    config: Config,
+    known_duplicates: set[str] | None = None,
+):
     """Run a single reconciliation pass.
 
     Fetches open problems from Zabbix and open incidents from Argus,
     then creates missing incidents and closes stale ones.
+
+    ``known_duplicates`` holds the event ids of problems that Argus has
+    rejected as duplicates, typically because their incident was closed
+    in Argus while the problem stayed open in Zabbix.  It is kept across
+    passes so those problems are not posted again on every pass, and an
+    id is forgotten once its problem disappears from Zabbix.
     """
+    if known_duplicates is None:
+        known_duplicates = set()
     problems = await zabbix.get_problems_with_hosts(
         resolve_hostgroups=config.requires_hostgroups()
     )
@@ -42,7 +56,9 @@ async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
     synced_problem_ids = {p["eventid"] for p in synced}
     fetched_problem_ids = {p["eventid"] for p in problems}
 
-    created = await _create_missing(synced, argus_incidents, argus, config)
+    created = await _create_missing(
+        synced, argus_incidents, known_duplicates, argus, config
+    )
     closed = await _close_stale(
         synced_problem_ids, fetched_problem_ids, argus_incidents, zabbix, argus
     )
