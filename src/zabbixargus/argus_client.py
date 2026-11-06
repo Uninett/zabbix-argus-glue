@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
+from pyargus import MultiValueDict
 from pyargus.async_client import AsyncClient
 from pyargus.models import Incident
 from simple_rest_client.exceptions import ClientError
@@ -97,13 +98,12 @@ class ArgusClient:
         """Create an Argus incident from Zabbix problem data."""
         if prefix_hostname and hostname and hostname not in description:
             description = f"{hostname}: {description}"
-        tag_dict = {k: v for k, v in tags}
         incident = Incident(
             description=description,
             source_incident_id=source_incident_id,
             details_url=details_url,
             level=level,
-            tags=tag_dict,
+            tags=MultiValueDict(tags),
             start_time=start_time or datetime.now(timezone.utc),
             end_time=datetime.max,
         )

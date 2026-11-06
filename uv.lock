@@ -1947,7 +1947,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "argus-api-client", specifier = ">=0.7.0" },
+    { name = "argus-api-client", specifier = ">=0.8.0" },
     { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2" },
     { name = "zabbix-utils", extras = ["async"] },
