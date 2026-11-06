@@ -66,6 +66,13 @@ dev = [
 ]
 
 [tool.uv]
+# Relative `exclude-newer` durations need uv 0.9.17
+required-version = ">=0.9.17"
+# Lock only releases that have been public for a week. Malicious releases
+# from compromised PyPI accounts are usually pulled within days. An urgent
+# fix can be let through early with a per-package `exclude-newer-package`
+# exception next to its constraint floor.
+exclude-newer = "7 days"
 # Older certifi bundles trust the compromised eMudhra/emSign CAs:
 # https://discuss.python.org/t/109576
 constraint-dependencies = ["certifi>=2026.10.19"]
