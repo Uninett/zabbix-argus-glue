@@ -15,6 +15,7 @@ updates:
     # propose releases that uv refuses to lock.
     cooldown:
       default-days: 7
+    # Major updates match no group, so each gets a PR of its own
     groups:
       minor-and-patch:
         update-types:
