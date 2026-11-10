@@ -128,7 +128,6 @@ configure:
   | `eventid`        | `{EVENT.ID}`                                        |
   | `value`          | `{EVENT.VALUE}`                                     |
   | `severity`       | `{EVENT.NSEVERITY}`                                 |
-  | `hostname`       | `{HOST.NAME}`                                       |
   | `name`           | `{EVENT.NAME}`                                      |
   | `timestamp`      | `{EVENT.TIMESTAMP}`                                 |
   | `triggerid`      | `{TRIGGER.ID}`                                      |
@@ -150,7 +149,6 @@ configure:
   payload.eventid = params.eventid;
   payload.value = params.value;
   payload.severity = params.severity;
-  payload.hostname = params.hostname;
   payload.name = params.name;
   payload.timestamp = params.timestamp;
   payload.triggerid = params.triggerid;
@@ -225,6 +223,11 @@ Go to **Alerts → Actions → Trigger actions → Create action**:
 
 ### 4. Test with curl
 
+The glue looks up the host by event id in Zabbix, so `eventid` must
+be a real event (e.g. a current problem's ID from *Monitoring →
+Problems*). A made-up ID gives an incident with no host, or is
+ignored when a host group filter is set.
+
 ```bash
 curl -X POST http://localhost:8080/webhook \
   -H 'Content-Type: application/json' \
@@ -233,7 +236,6 @@ curl -X POST http://localhost:8080/webhook \
     "eventid": "12345",
     "value": "1",
     "severity": "4",
-    "hostname": "web01.example.com",
     "name": "High CPU usage on web01",
     "timestamp": "1745326800",
     "triggerid": "678",

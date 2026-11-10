@@ -105,24 +105,53 @@ class ZabbixClient:
         problems = await self.api.problem.get(eventids=[eventid], output=["eventid"])
         return bool(problems)
 
-    async def get_hostgroups_for_host(self, hostname: str) -> list[str]:
-        """Return the host groups a host belongs to, with a TTL cache.
+    async def get_event_hosts(
+        self, eventid: str, *, resolve_hostgroups: bool = True
+    ) -> tuple[list[dict], list[str]]:
+        """Return an event's hosts and the sorted names of their host groups.
+
+        Resolves hosts the same way as ``get_problems_with_hosts`` (by
+        event id, then host groups by host id), so the webhook and
+        reconciliation paths agree on hosts and groups.  Host groups are
+        empty when ``resolve_hostgroups`` is off.
+        """
+        hosts_by_eventid = await self._get_hosts_by_eventid([eventid])
+        hosts = hosts_by_eventid.get(eventid, [])
+        groups_by_hostid = {}
+        if resolve_hostgroups:
+            groups_by_hostid = await self._get_cached_hostgroups_by_hostid(
+                {host["hostid"] for host in hosts}
+            )
+        return hosts, _hostgroup_names(hosts, groups_by_hostid)
+
+    async def _get_cached_hostgroups_by_hostid(
+        self, hostids: set[str]
+    ) -> dict[str, list[str]]:
+        """``_get_hostgroups_by_hostid`` with a TTL cache.
 
         Webhook events arrive one host at a time and host-group
         membership changes rarely, so results are cached for
         ``_HOSTGROUP_CACHE_TTL`` seconds to avoid an API call per event.
-        The cache keeps one entry per hostname seen; its size is bounded
+        The cache keeps one entry per host id seen; its size is bounded
         by the Zabbix host inventory and entries are never evicted (only
         refreshed in place), which is fine for that cardinality.
         """
         now = time.monotonic()
-        cached = self._hostgroup_cache.get(hostname)
-        if cached is not None and now - cached[0] < self._HOSTGROUP_CACHE_TTL:
-            return cached[1]
+        groups_by_hostid = {}
+        stale = set()
+        for hostid in hostids:
+            cached = self._hostgroup_cache.get(hostid)
+            if cached is not None and now - cached[0] < self._HOSTGROUP_CACHE_TTL:
+                groups_by_hostid[hostid] = cached[1]
+            else:
+                stale.add(hostid)
 
-        groups = await self._fetch_hostgroups_for_host(hostname)
-        self._hostgroup_cache[hostname] = (now, groups)
-        return groups
+        fetched = await self._get_hostgroups_by_hostid(stale)
+        for hostid in stale:
+            groups = fetched.get(hostid, [])
+            self._hostgroup_cache[hostid] = (now, groups)
+            groups_by_hostid[hostid] = groups
+        return groups_by_hostid
 
     async def _get_hosts_by_eventid(self, eventids: list[str]) -> dict[str, list[dict]]:
         """Map each event id to its hosts.
@@ -154,17 +183,10 @@ class ZabbixClient:
             for host in hosts
         }
 
-    async def _fetch_hostgroups_for_host(self, hostname: str) -> list[str]:
-        """Look up a single host's groups by name (uncached)."""
-        hosts = await self.api.host.get(
-            filter={"host": [hostname]},
-            selectHostGroups="extend",
-            output=["hostid"],
-        )
-        groups = {
-            group["name"] for host in hosts for group in host.get("hostgroups", [])
-        }
-        return sorted(groups)
+
+def primary_hostname(hosts: list[dict]) -> str:
+    """Technical name of an event's first host, or empty if it has none."""
+    return hosts[0]["host"] if hosts else ""
 
 
 def _hostgroup_names(

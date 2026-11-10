@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from zabbixargus.argus_client import ArgusClient, DuplicateIncidentError
 from zabbixargus.config import Config
 from zabbixargus.tags import build_tags
-from zabbixargus.zabbix_client import ZabbixClient, build_details_url
+from zabbixargus.zabbix_client import (
+    ZabbixClient,
+    build_details_url,
+    primary_hostname,
+)
 
 log = logging.getLogger(__name__)
 
@@ -106,8 +110,7 @@ async def _create_incident_for_problem(
     config: Config,
 ):
     eventid = problem["eventid"]
-    hosts = problem.get("hosts", [])
-    hostname = hosts[0]["host"] if hosts else ""
+    hostname = primary_hostname(problem.get("hosts", []))
     hostgroups = problem.get("hostgroups", [])
 
     zabbix_severity = int(problem["severity"])
