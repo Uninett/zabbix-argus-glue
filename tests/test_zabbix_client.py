@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from zabbixargus.config import ZabbixConfig
-from zabbixargus.zabbix_client import ZabbixClient
+from zabbixargus.zabbix_client import ZabbixClient, primary_hostname
 
 
 @pytest.fixture
@@ -129,34 +129,80 @@ class TestGetProblemsWithHosts:
         assert result[0]["hostgroups"] == []
 
 
-class TestGetHostgroupsForHost:
+class TestGetEventHosts:
     @pytest.mark.asyncio
-    async def test_when_host_has_groups_then_it_should_return_sorted_names(
+    async def test_when_event_has_host_then_it_should_return_hosts_and_groups(
         self, config, mock_api
     ):
         client = ZabbixClient(config)
         client.api = mock_api
+        host = {"hostid": "1", "host": "mgmt1", "name": "Management cluster (mgmt1)"}
+        mock_api.event.get.return_value = [{"eventid": "100", "hosts": [host]}]
         mock_api.host.get.return_value = [
             {"hostid": "1", "hostgroups": [{"name": "Web"}, {"name": "Linux servers"}]},
         ]
 
-        result = await client.get_hostgroups_for_host("web01")
+        hosts, hostgroups = await client.get_event_hosts("100")
 
-        assert result == ["Linux servers", "Web"]
+        assert hosts == [host]
+        assert hostgroups == ["Linux servers", "Web"]
+        mock_api.event.get.assert_awaited_once_with(
+            eventids=["100"], selectHosts="extend", output=["eventid"]
+        )
+        mock_api.host.get.assert_awaited_once_with(
+            hostids=["1"], selectHostGroups="extend", output=["hostid"]
+        )
 
     @pytest.mark.asyncio
-    async def test_when_called_twice_within_ttl_then_it_should_use_cache(
+    async def test_when_resolution_disabled_then_it_should_skip_hostgroup_lookup(
         self, config, mock_api
     ):
         client = ZabbixClient(config)
         client.api = mock_api
+        mock_api.event.get.return_value = [
+            {"eventid": "100", "hosts": [{"hostid": "1", "host": "web01"}]},
+        ]
+
+        hosts, hostgroups = await client.get_event_hosts(
+            "100", resolve_hostgroups=False
+        )
+
+        assert hosts == [{"hostid": "1", "host": "web01"}]
+        assert hostgroups == []
+        mock_api.host.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_event_not_found_then_it_should_return_empty(
+        self, config, mock_api
+    ):
+        client = ZabbixClient(config)
+        client.api = mock_api
+        mock_api.event.get.return_value = []
+
+        hosts, hostgroups = await client.get_event_hosts("100")
+
+        assert hosts == []
+        assert hostgroups == []
+        mock_api.host.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_same_host_within_ttl_then_it_should_use_cache(
+        self, config, mock_api
+    ):
+        client = ZabbixClient(config)
+        client.api = mock_api
+        mock_api.event.get.side_effect = [
+            [{"eventid": "100", "hosts": [{"hostid": "1", "host": "web01"}]}],
+            [{"eventid": "200", "hosts": [{"hostid": "1", "host": "web01"}]}],
+        ]
         mock_api.host.get.return_value = [
             {"hostid": "1", "hostgroups": [{"name": "Linux servers"}]},
         ]
 
-        await client.get_hostgroups_for_host("web01")
-        await client.get_hostgroups_for_host("web01")
+        await client.get_event_hosts("100")
+        _, hostgroups = await client.get_event_hosts("200")
 
+        assert hostgroups == ["Linux servers"]
         mock_api.host.get.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -165,6 +211,9 @@ class TestGetHostgroupsForHost:
     ):
         client = ZabbixClient(config)
         client.api = mock_api
+        mock_api.event.get.return_value = [
+            {"eventid": "100", "hosts": [{"hostid": "1", "host": "web01"}]},
+        ]
         mock_api.host.get.return_value = [
             {"hostid": "1", "hostgroups": [{"name": "Linux servers"}]},
         ]
@@ -174,8 +223,38 @@ class TestGetHostgroupsForHost:
             "zabbixargus.zabbix_client.time.monotonic", lambda: clock[0]
         )
 
-        await client.get_hostgroups_for_host("web01")
+        await client.get_event_hosts("100")
         clock[0] += client._HOSTGROUP_CACHE_TTL + 1
-        await client.get_hostgroups_for_host("web01")
+        await client.get_event_hosts("100")
 
         assert mock_api.host.get.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_when_host_has_no_groups_then_it_should_cache_empty(
+        self, config, mock_api
+    ):
+        client = ZabbixClient(config)
+        client.api = mock_api
+        mock_api.event.get.return_value = [
+            {"eventid": "100", "hosts": [{"hostid": "1", "host": "web01"}]},
+        ]
+        mock_api.host.get.return_value = []
+
+        await client.get_event_hosts("100")
+        _, hostgroups = await client.get_event_hosts("100")
+
+        assert hostgroups == []
+        mock_api.host.get.assert_awaited_once()
+
+
+class TestPrimaryHostname:
+    def test_when_hosts_present_then_it_should_return_first_technical_name(self):
+        hosts = [
+            {"hostid": "1", "host": "mgmt1", "name": "Management cluster (mgmt1)"},
+            {"hostid": "2", "host": "mgmt2", "name": "mgmt2"},
+        ]
+
+        assert primary_hostname(hosts) == "mgmt1"
+
+    def test_when_no_hosts_then_it_should_return_empty(self):
+        assert primary_hostname([]) == ""
