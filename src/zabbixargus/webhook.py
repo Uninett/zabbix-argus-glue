@@ -17,7 +17,11 @@ from zabbixargus.argus_client import (
 )
 from zabbixargus.config import Config, WebhookConfig
 from zabbixargus.tags import build_tags
-from zabbixargus.zabbix_client import ZabbixClient, build_details_url
+from zabbixargus.zabbix_client import (
+    ZabbixClient,
+    build_details_url,
+    primary_hostname,
+)
 
 log = logging.getLogger(__name__)
 
@@ -199,28 +203,41 @@ async def _handle_problem(
 ) -> web.Response:
     """Create an Argus incident from a Zabbix problem event.
 
-    The Zabbix webhook payload carries no host-group data, so when the
-    host-group filter or hostgroup tagging is active we look the host's
-    groups up via the Zabbix API (cached).  Out-of-group problems are
-    ignored so this path stays consistent with reconciliation.
+    The event's hosts, and their groups when the host-group filter or hostgroup
+    tagging is active, are looked up by event id via the Zabbix API, exactly as
+    reconciliation does. The payload's ``hostname`` is not used, since it carries
+    the host's "visible name". Out-of-group problems are ignored so both paths
+    stay consistent
     """
-    hostgroups = (
-        await zabbix.get_hostgroups_for_host(payload.hostname)
-        if config.requires_hostgroups()
-        else []
-    )
+    try:
+        hosts, hostgroups = await zabbix.get_event_hosts(
+            payload.eventid, resolve_hostgroups=config.requires_hostgroups()
+        )
+    except Exception:
+        log.exception(
+            "Webhook: failed to look up hosts for problem %s", payload.eventid
+        )
+        raise _error_response(web.HTTPBadGateway, "zabbix error")
+    hostname = primary_hostname(hosts)
+    if not hosts:
+        log.warning(
+            "Webhook: Zabbix returned no hosts for problem %s (payload hostname %r);"
+            " check that the API user has read access to the host",
+            payload.eventid,
+            payload.hostname,
+        )
     if not config.filter.allows(hostgroups):
         log.info(
             "Webhook: problem %s host %s not in allowed groups, ignoring",
             payload.eventid,
-            payload.hostname,
+            hostname,
         )
         return web.json_response({"status": "ignored"})
 
     argus_level = config.severity.mapping.get(payload.severity, 5)
 
     tags = build_tags(
-        hostname=payload.hostname,
+        hostname=hostname,
         hostgroups=hostgroups,
         trigger=payload.name,
         zabbix_tags=payload.tags,
@@ -234,7 +251,7 @@ async def _handle_problem(
     try:
         await argus.create_incident_from_problem(
             description=payload.name,
-            hostname=payload.hostname,
+            hostname=hostname,
             prefix_hostname=config.sync.prefix_hostname,
             source_incident_id=payload.eventid,
             details_url=details_url,

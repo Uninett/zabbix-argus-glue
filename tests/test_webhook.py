@@ -1,6 +1,7 @@
 """Tests for the webhook receiver."""
 
 import json
+import logging
 from datetime import timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -74,7 +75,9 @@ def mock_argus():
 @pytest.fixture
 def mock_zabbix():
     zabbix = MagicMock()
-    zabbix.get_hostgroups_for_host = AsyncMock(return_value=[])
+    zabbix.get_event_hosts = AsyncMock(
+        return_value=([{"hostid": "1", "host": "web01-tech"}], [])
+    )
     return zabbix
 
 
@@ -165,7 +168,7 @@ class TestHandleProblem:
 
         call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
         assert call_kwargs["source_incident_id"] == "123"
-        assert call_kwargs["hostname"] == "web01"
+        assert call_kwargs["hostname"] == "web01-tech"
         assert call_kwargs["description"] == "High CPU usage"
         assert call_kwargs["level"] == 2  # severity 4 → Argus level 2
         assert "triggerid=456" in call_kwargs["details_url"]
@@ -188,7 +191,7 @@ class TestHandleProblem:
 
         call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
         # Should still have host tag and static tags, just no zabbix tags
-        assert ("host", "web01") in call_kwargs["tags"]
+        assert ("host", "web01-tech") in call_kwargs["tags"]
 
     async def test_when_severity_unknown_then_it_should_default_to_5(
         self, client, mock_argus
@@ -205,7 +208,10 @@ class TestHostgroupFilter:
     async def test_when_host_in_allowed_group_then_it_should_create_incident(
         self, mock_argus, mock_zabbix
     ):
-        mock_zabbix.get_hostgroups_for_host.return_value = ["Linux servers"]
+        mock_zabbix.get_event_hosts.return_value = (
+            [{"hostid": "1", "host": "web01-tech"}],
+            ["Linux servers"],
+        )
         config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
         app = create_app(mock_argus, mock_zabbix, config)
         async with TestClient(TestServer(app)) as c:
@@ -217,7 +223,10 @@ class TestHostgroupFilter:
     async def test_when_host_not_in_allowed_group_then_it_should_ignore(
         self, mock_argus, mock_zabbix
     ):
-        mock_zabbix.get_hostgroups_for_host.return_value = ["Windows servers"]
+        mock_zabbix.get_event_hosts.return_value = (
+            [{"hostid": "1", "host": "web01-tech"}],
+            ["Windows servers"],
+        )
         config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
         app = create_app(mock_argus, mock_zabbix, config)
         async with TestClient(TestServer(app)) as c:
@@ -231,7 +240,10 @@ class TestHostgroupFilter:
     async def test_when_hostgroups_resolved_then_it_should_tag_incident(
         self, mock_argus, mock_zabbix
     ):
-        mock_zabbix.get_hostgroups_for_host.return_value = ["Linux servers"]
+        mock_zabbix.get_event_hosts.return_value = (
+            [{"hostid": "1", "host": "web01-tech"}],
+            ["Linux servers"],
+        )
         app = create_app(mock_argus, mock_zabbix, _config())
         async with TestClient(TestServer(app)) as c:
             await _post(c, _problem_payload())
@@ -239,7 +251,53 @@ class TestHostgroupFilter:
         call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
         assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
 
-    async def test_when_tags_disabled_and_no_filter_then_it_should_skip_lookup(
+    async def test_when_filter_active_then_it_should_look_up_host_by_eventid(
+        self, mock_argus, mock_zabbix
+    ):
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+        app = create_app(mock_argus, mock_zabbix, config)
+        async with TestClient(TestServer(app)) as c:
+            await _post(c, _problem_payload())
+
+        mock_zabbix.get_event_hosts.assert_awaited_once_with(
+            "123", resolve_hostgroups=True
+        )
+
+    async def test_when_visible_name_differs_then_it_should_use_technical_name(
+        self, mock_argus, mock_zabbix
+    ):
+        mock_zabbix.get_event_hosts.return_value = (
+            [{"hostid": "1", "host": "mgmt1", "name": "Management cluster (mgmt1)"}],
+            ["Linux servers"],
+        )
+        config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
+        app = create_app(mock_argus, mock_zabbix, config)
+        async with TestClient(TestServer(app)) as c:
+            resp = await _post(
+                c, _problem_payload(hostname="Management cluster (mgmt1)")
+            )
+
+        assert resp.status == 201
+        call_kwargs = mock_argus.create_incident_from_problem.call_args.kwargs
+        assert call_kwargs["hostname"] == "mgmt1"
+        assert ("host", "mgmt1") in call_kwargs["tags"]
+        assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
+
+    async def test_when_event_has_no_visible_hosts_then_it_should_warn(
+        self, mock_argus, mock_zabbix, caplog
+    ):
+        mock_zabbix.get_event_hosts.return_value = ([], [])
+        app = create_app(mock_argus, mock_zabbix, _config())
+        with caplog.at_level(logging.WARNING, logger="zabbixargus.webhook"):
+            async with TestClient(TestServer(app)) as c:
+                await _post(c, _problem_payload(hostname="Management cluster"))
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "123" in warnings[0].getMessage()
+        assert "Management cluster" in warnings[0].getMessage()
+
+    async def test_when_tags_disabled_and_no_filter_then_it_should_skip_group_lookup(
         self, mock_argus, mock_zabbix
     ):
         config = _config(tags=TagsConfig(include_hostgroups=False))
@@ -247,7 +305,9 @@ class TestHostgroupFilter:
         async with TestClient(TestServer(app)) as c:
             await _post(c, _problem_payload())
 
-        mock_zabbix.get_hostgroups_for_host.assert_not_awaited()
+        mock_zabbix.get_event_hosts.assert_awaited_once_with(
+            "123", resolve_hostgroups=False
+        )
 
 
 class TestHandleResolution:
@@ -376,6 +436,20 @@ class TestArgusFailure:
         resp = await _post(client, _resolution_payload())
 
         assert resp.status == 500
+
+
+class TestZabbixFailure:
+    async def test_when_host_lookup_raises_then_it_should_return_502(
+        self, client, mock_argus, mock_zabbix
+    ):
+        mock_zabbix.get_event_hosts.side_effect = Exception("network")
+
+        resp = await _post(client, _problem_payload())
+        body = await resp.json()
+
+        assert resp.status == 502
+        assert body["error"] == "zabbix error"
+        mock_argus.create_incident_from_problem.assert_not_awaited()
 
 
 class TestTimestampParsing:
