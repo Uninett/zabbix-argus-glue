@@ -54,8 +54,11 @@ async def reconcile(
     synced_problem_ids = {p["eventid"] for p in synced}
     fetched_problem_ids = {p["eventid"] for p in problems}
 
-    # Remove problems from `known_duplicates` that are now closed in Zabbix
-    known_duplicates &= fetched_problem_ids
+    # Forget known duplicates whose problem is no longer open in Zabbix.
+    # An empty fetch is likely a transient failure (see _close_stale), so
+    # keep the set as it is in that case.
+    if fetched_problem_ids:
+        known_duplicates.intersection_update(fetched_problem_ids)
 
     created, duplicates = await _create_missing(
         synced, argus_incidents, known_duplicates, argus, config
