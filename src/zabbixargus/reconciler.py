@@ -20,19 +20,31 @@ async def run_reconciliation_loop(
     zabbix: ZabbixClient, argus: ArgusClient, config: Config
 ):
     """Run reconciliation on startup and then at a regular interval."""
+    known_duplicates: set[str] = set()
     while True:
         try:
-            await reconcile(zabbix, argus, config)
+            await reconcile(zabbix, argus, config, known_duplicates)
         except Exception:
             log.exception("Reconciliation failed")
         await asyncio.sleep(config.reconciliation.interval)
 
 
-async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
+async def reconcile(
+    zabbix: ZabbixClient,
+    argus: ArgusClient,
+    config: Config,
+    known_duplicates: set[str],
+):
     """Run a single reconciliation pass.
 
     Fetches open problems from Zabbix and open incidents from Argus,
     then creates missing incidents and closes stale ones.
+
+    ``known_duplicates`` holds the event ids of problems that Argus has
+    rejected as duplicates, typically because their incident was closed
+    in Argus while the problem stayed open in Zabbix.  It is kept across
+    passes so those problems are not posted again on every pass, and an
+    id is forgotten once its problem disappears from Zabbix.
     """
     problems = await zabbix.get_problems_with_hosts(
         resolve_hostgroups=config.requires_hostgroups()
@@ -46,16 +58,24 @@ async def reconcile(zabbix: ZabbixClient, argus: ArgusClient, config: Config):
     synced_problem_ids = {p["eventid"] for p in synced}
     fetched_problem_ids = {p["eventid"] for p in problems}
 
-    created = await _create_missing(synced, argus_incidents, argus, config)
+    # Forget known duplicates whose problem is no longer open in Zabbix.
+    # An empty fetch is likely a transient failure (see _close_stale), so
+    # keep the set as it is in that case.
+    if fetched_problem_ids:
+        known_duplicates.intersection_update(fetched_problem_ids)
+
+    created, duplicates = await _create_missing(
+        synced, argus_incidents, known_duplicates, argus, config
+    )
     closed = await _close_stale(
         synced_problem_ids, fetched_problem_ids, argus_incidents, zabbix, argus
     )
 
-    _log_reconciliation_summary(created, closed, ignored, config)
+    _log_reconciliation_summary(created, closed, ignored, duplicates, config)
 
 
 def _log_reconciliation_summary(
-    created: int, closed: int, ignored: int, config: Config
+    created: int, closed: int, ignored: int, duplicates: int, config: Config
 ):
     """Summarize a reconciliation pass.
 
@@ -64,44 +84,64 @@ def _log_reconciliation_summary(
     misconfigured, or first run); log at WARNING so it is easy to
     spot.  Otherwise log at INFO.  Zero drift is logged at DEBUG.
     ``ignored`` counts problems excluded by the host-group filter and
-    is reported alongside either way.
+    ``duplicates`` counts problems skipped because Argus already has an
+    incident for them; both are reported alongside either way.
     """
     if created == 0 and closed == 0:
-        log.debug("Reconciliation pass: no drift (%d ignored by filter)", ignored)
+        log.debug(
+            "Reconciliation pass: no drift (%d ignored by filter, %d already in Argus)",
+            ignored,
+            duplicates,
+        )
         return
     level = logging.WARNING if config.webhook.enabled else logging.INFO
     log.log(
         level,
-        "Reconciliation pass: created %d, closed %d (%d ignored by filter)",
+        "Reconciliation pass: created %d, closed %d (%d ignored by filter, "
+        "%d already in Argus)",
         created,
         closed,
         ignored,
+        duplicates,
     )
 
 
 async def _create_missing(
     problems: list[dict],
     argus_incidents: dict,
+    known_duplicates: set[str],
     argus: ArgusClient,
     config: Config,
-) -> int:
+) -> tuple[int, int]:
+    """Create incidents for problems that have none open in Argus.
+
+    Returns the number of incidents created and the number of problems
+    skipped because Argus already has an incident for them.
+    """
     created = 0
+    duplicates = 0
     for problem in problems:
         eventid = problem["eventid"]
         if eventid in argus_incidents:
+            continue
+        if eventid in known_duplicates:
+            duplicates += 1
             continue
 
         try:
             await _create_incident_for_problem(problem, argus, config)
             created += 1
         except DuplicateIncidentError:
-            # Recurs every pass until the problem clears, so log at DEBUG.
-            log.debug(
-                "Problem %s already has an Argus incident; not recreating", eventid
+            known_duplicates.add(eventid)
+            duplicates += 1
+            log.info(
+                "Problem %s already has an Argus incident, probably closed; "
+                "not recreating it until the problem clears in Zabbix",
+                eventid,
             )
         except Exception:
             log.exception("Failed to create incident for problem %s", eventid)
-    return created
+    return created, duplicates
 
 
 async def _create_incident_for_problem(

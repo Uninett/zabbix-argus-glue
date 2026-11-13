@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pyargus.models import Incident
 
+from zabbixargus.argus_client import DuplicateIncidentError
 from zabbixargus.config import (
     ArgusConfig,
     Config,
@@ -78,7 +79,7 @@ class TestReconcile:
         zabbix.get_problems_with_hosts.return_value = [_problem("100")]
         argus.get_open_incidents.return_value = {}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.create_incident_from_problem.assert_called_once()
         call_kwargs = argus.create_incident_from_problem.call_args.kwargs
@@ -91,7 +92,7 @@ class TestReconcile:
         zabbix.get_problems_with_hosts.return_value = [_problem("100")]
         argus.get_open_incidents.return_value = {"100": _incident("100")}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.create_incident_from_problem.assert_not_called()
 
@@ -104,7 +105,7 @@ class TestReconcile:
         zabbix.get_problems_with_hosts.return_value = [_problem("200")]
         argus.get_open_incidents.return_value = {"100": _incident("100")}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.resolve_incident.assert_called_once()
 
@@ -115,7 +116,7 @@ class TestReconcile:
         zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="1")]
         argus.get_open_incidents.return_value = {}
 
-        await reconcile(zabbix, argus, _config(minimum_severity=3))
+        await reconcile(zabbix, argus, _config(minimum_severity=3), set())
 
         argus.create_incident_from_problem.assert_not_called()
 
@@ -126,7 +127,7 @@ class TestReconcile:
         zabbix.get_problems_with_hosts.return_value = [_problem("100", severity="5")]
         argus.get_open_incidents.return_value = {}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         call_kwargs = argus.create_incident_from_problem.call_args.kwargs
         assert call_kwargs["level"] == 1  # Zabbix 5 (Disaster) → Argus 1 (Critical)
@@ -145,7 +146,7 @@ class TestReconcile:
             _incident("200"),
         ]
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         assert argus.create_incident_from_problem.call_count == 2
 
@@ -161,7 +162,7 @@ class TestHostgroupFilter:
         argus.get_open_incidents.return_value = {}
         config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
 
-        await reconcile(zabbix, argus, config)
+        await reconcile(zabbix, argus, config, set())
 
         argus.create_incident_from_problem.assert_not_called()
 
@@ -175,7 +176,7 @@ class TestHostgroupFilter:
         argus.get_open_incidents.return_value = {}
         config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
 
-        await reconcile(zabbix, argus, config)
+        await reconcile(zabbix, argus, config, set())
 
         call_kwargs = argus.create_incident_from_problem.call_args.kwargs
         assert ("hostgroup", "Linux servers") in call_kwargs["tags"]
@@ -192,7 +193,7 @@ class TestCloseStale:
         zabbix.problem_exists.return_value = True
         argus.get_open_incidents.return_value = {"100": _incident("100")}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.resolve_incident.assert_not_called()
 
@@ -205,7 +206,7 @@ class TestCloseStale:
         zabbix.get_problems_with_hosts.return_value = []
         argus.get_open_incidents.return_value = {"100": _incident("100")}
 
-        await reconcile(zabbix, argus, _config())
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.resolve_incident.assert_not_called()
         zabbix.problem_exists.assert_not_called()
@@ -222,7 +223,7 @@ class TestCloseStale:
         argus.get_open_incidents.return_value = {"100": _incident("100")}
         config = _config(filter=FilterConfig(hostgroups=["Linux servers"]))
 
-        await reconcile(zabbix, argus, config)
+        await reconcile(zabbix, argus, config, set())
 
         argus.resolve_incident.assert_called_once()
         zabbix.problem_exists.assert_not_called()
@@ -230,21 +231,77 @@ class TestCloseStale:
 
 class TestDuplicateOnCreate:
     @pytest.mark.asyncio
-    async def test_when_create_hits_duplicate_then_it_should_skip_quietly(
+    async def test_when_create_hits_duplicate_then_it_should_skip_without_lookup(
         self, zabbix, argus
     ):
-        from zabbixargus.argus_client import DuplicateIncidentError
-
         zabbix.get_problems_with_hosts.return_value = [_problem("100")]
         argus.get_open_incidents.return_value = {}
         argus.create_incident_from_problem.side_effect = DuplicateIncidentError("100")
 
-        # Must not raise; the reconciler skips quietly without an extra lookup
-        # (it recurs every pass, so it stays at DEBUG and does no API call).
-        await reconcile(zabbix, argus, _config())
+        # Must not raise, and must not spend an extra API call on a lookup.
+        await reconcile(zabbix, argus, _config(), set())
 
         argus.create_incident_from_problem.assert_awaited_once()
         argus.get_incident_by_source_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_when_create_hit_duplicate_then_later_passes_should_not_retry(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+        argus.create_incident_from_problem.side_effect = DuplicateIncidentError("100")
+        known_duplicates = set()
+
+        await reconcile(zabbix, argus, _config(), known_duplicates)
+        await reconcile(zabbix, argus, _config(), known_duplicates)
+
+        argus.create_incident_from_problem.assert_awaited_once()
+        assert known_duplicates == {"100"}
+
+    @pytest.mark.asyncio
+    async def test_when_duplicate_problem_clears_then_it_should_be_forgotten(
+        self, zabbix, argus
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("200")]
+        argus.get_open_incidents.return_value = {"200": _incident("200")}
+        known_duplicates = {"100"}
+
+        await reconcile(zabbix, argus, _config(), known_duplicates)
+
+        assert known_duplicates == set()
+
+    @pytest.mark.asyncio
+    async def test_when_create_hits_duplicate_then_it_should_log_info_once(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+        argus.create_incident_from_problem.side_effect = DuplicateIncidentError("100")
+        known_duplicates = set()
+
+        with caplog.at_level("INFO", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(), known_duplicates)
+            await reconcile(zabbix, argus, _config(), known_duplicates)
+
+        notices = [r for r in caplog.records if "already has an Argus" in r.message]
+        assert len(notices) == 1
+        assert notices[0].levelname == "INFO"
+
+    @pytest.mark.asyncio
+    async def test_when_duplicates_skipped_then_summary_should_count_them(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("DEBUG", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(), {"100"})
+
+        assert any(
+            "no drift (0 ignored by filter, 1 already in Argus)" in r.message
+            for r in caplog.records
+        )
 
 
 class TestReconciliationSummary:
@@ -256,7 +313,7 @@ class TestReconciliationSummary:
         argus.get_open_incidents.return_value = {}
 
         with caplog.at_level("WARNING", logger="zabbixargus.reconciler"):
-            await reconcile(zabbix, argus, _config(webhook_enabled=True))
+            await reconcile(zabbix, argus, _config(webhook_enabled=True), set())
 
         assert any(
             "Reconciliation pass: created 1, closed 0" in r.message
@@ -272,7 +329,7 @@ class TestReconciliationSummary:
         argus.get_open_incidents.return_value = {}
 
         with caplog.at_level("INFO", logger="zabbixargus.reconciler"):
-            await reconcile(zabbix, argus, _config(webhook_enabled=False))
+            await reconcile(zabbix, argus, _config(webhook_enabled=False), set())
 
         summary = [r for r in caplog.records if "Reconciliation pass" in r.message]
         assert len(summary) == 1
@@ -286,6 +343,6 @@ class TestReconciliationSummary:
         argus.get_open_incidents.return_value = {}
 
         with caplog.at_level("INFO", logger="zabbixargus.reconciler"):
-            await reconcile(zabbix, argus, _config())
+            await reconcile(zabbix, argus, _config(), set())
 
         assert not any("Reconciliation pass" in r.message for r in caplog.records)

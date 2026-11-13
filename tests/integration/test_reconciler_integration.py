@@ -55,7 +55,7 @@ async def test_when_zabbix_has_problems_then_reconcile_should_create_argus_incid
         _problem("reconcile-200", severity="5", name="Disk full", hostname="db01"),
     ]
 
-    await reconcile(zabbix, argus, _config())
+    await reconcile(zabbix, argus, _config(), set())
 
     incidents = await argus.get_open_incidents()
     assert "reconcile-100" in incidents
@@ -68,7 +68,7 @@ async def test_when_problem_resolved_then_reconcile_should_close_argus_incident(
 ):
     # First reconcile creates the incident
     zabbix.get_problems_with_hosts.return_value = [_problem("reconcile-300")]
-    await reconcile(zabbix, argus, _config())
+    await reconcile(zabbix, argus, _config(), set())
 
     incidents = await argus.get_open_incidents()
     assert "reconcile-300" in incidents
@@ -77,7 +77,7 @@ async def test_when_problem_resolved_then_reconcile_should_close_argus_incident(
     # so the close path runs, and verify-before-close confirms 300 is gone.
     zabbix.get_problems_with_hosts.return_value = [_problem("reconcile-400")]
     zabbix.problem_exists = AsyncMock(return_value=False)
-    await reconcile(zabbix, argus, _config())
+    await reconcile(zabbix, argus, _config(), set())
 
     incidents = await argus.get_open_incidents()
     assert "reconcile-300" not in incidents
