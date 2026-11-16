@@ -288,21 +288,6 @@ class TestDuplicateOnCreate:
         assert len(notices) == 1
         assert notices[0].levelname == "INFO"
 
-    @pytest.mark.asyncio
-    async def test_when_duplicates_skipped_then_summary_should_count_them(
-        self, zabbix, argus, caplog
-    ):
-        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
-        argus.get_open_incidents.return_value = {}
-
-        with caplog.at_level("DEBUG", logger="zabbixargus.reconciler"):
-            await reconcile(zabbix, argus, _config(), {"100"})
-
-        assert any(
-            "no drift (0 ignored by filter, 1 closed in Argus)" in r.message
-            for r in caplog.records
-        )
-
 
 class TestReconciliationSummary:
     @pytest.mark.asyncio
@@ -346,3 +331,38 @@ class TestReconciliationSummary:
             await reconcile(zabbix, argus, _config(), set())
 
         assert not any("Reconciliation pass" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_when_no_drift_and_duplicates_skipped_then_summary_should_count_them(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("DEBUG", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(), {"100"})
+
+        assert any(
+            "no drift (0 ignored by filter, 1 closed in Argus)" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_when_drift_and_duplicates_skipped_then_summary_should_count_them(
+        self, zabbix, argus, caplog
+    ):
+        zabbix.get_problems_with_hosts.return_value = [
+            _problem("100"),
+            _problem("200"),
+        ]
+        argus.get_open_incidents.return_value = {}
+
+        with caplog.at_level("WARNING", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(), {"100"})
+
+        argus.create_incident_from_problem.assert_awaited_once()
+        assert any(
+            "Reconciliation pass: created 1, closed 0 "
+            "(0 ignored by filter, 1 closed in Argus)" == r.message
+            for r in caplog.records
+        )
