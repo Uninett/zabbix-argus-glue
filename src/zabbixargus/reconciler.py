@@ -80,12 +80,12 @@ def _log_reconciliation_summary(
     misconfigured, or first run); log at WARNING so it is easy to
     spot.  Otherwise log at INFO.  Zero drift is logged at DEBUG.
     ``ignored`` counts problems excluded by the host-group filter and
-    ``duplicates`` counts problems skipped because Argus already has an
+    ``duplicates`` counts problems skipped because Argus already has a closed
     incident for them; both are reported alongside either way.
     """
     if created == 0 and closed == 0:
         log.debug(
-            "Reconciliation pass: no drift (%d ignored by filter, %d already in Argus)",
+            "Reconciliation pass: no drift (%d ignored by filter, %d closed in Argus)",
             ignored,
             duplicates,
         )
@@ -94,7 +94,7 @@ def _log_reconciliation_summary(
     log.log(
         level,
         "Reconciliation pass: created %d, closed %d (%d ignored by filter, "
-        "%d already in Argus)",
+        "%d closed in Argus)",
         created,
         closed,
         ignored,
@@ -112,7 +112,7 @@ async def _create_missing(
     """Create incidents for problems that have none open in Argus.
 
     Returns the number of incidents created and the number of problems
-    skipped because Argus already has an incident for them.
+    skipped because Argus already has a closed incident for them.
     """
     created = 0
     duplicates = 0

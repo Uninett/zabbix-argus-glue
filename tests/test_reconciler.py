@@ -299,7 +299,7 @@ class TestDuplicateOnCreate:
             await reconcile(zabbix, argus, _config(), {"100"})
 
         assert any(
-            "no drift (0 ignored by filter, 1 already in Argus)" in r.message
+            "no drift (0 ignored by filter, 1 closed in Argus)" in r.message
             for r in caplog.records
         )
 
