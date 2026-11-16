@@ -288,6 +288,44 @@ class TestDuplicateOnCreate:
         assert len(notices) == 1
         assert notices[0].levelname == "INFO"
 
+    @pytest.mark.asyncio
+    async def test_when_known_duplicate_incident_reopened_then_it_should_count_as_open(
+        self, zabbix, argus, caplog
+    ):
+        # The incident was closed in Argus (so the problem became a known
+        # duplicate) and has since been re-opened. The open-incident check
+        # must win over the known-duplicate check.
+        zabbix.get_problems_with_hosts.return_value = [_problem("100")]
+        argus.get_open_incidents.return_value = {"100": _incident("100")}
+
+        with caplog.at_level("DEBUG", logger="zabbixargus.reconciler"):
+            await reconcile(zabbix, argus, _config(), {"100"})
+
+        argus.create_incident_from_problem.assert_not_called()
+        assert any(
+            "no drift (0 ignored by filter, 0 closed in Argus)" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_when_reopened_duplicate_problem_clears_then_it_should_close_incident(
+        self, zabbix, argus
+    ):
+        # A different problem keeps the snapshot non-empty; incident 100's
+        # problem is genuinely gone (problem_exists -> False), so it closes.
+        zabbix.get_problems_with_hosts.return_value = [_problem("200")]
+        argus.get_open_incidents.return_value = {
+            "100": _incident("100"),
+            "200": _incident("200", pk=2),
+        }
+        known_duplicates = {"100"}
+
+        await reconcile(zabbix, argus, _config(), known_duplicates)
+
+        argus.resolve_incident.assert_called_once()
+        assert argus.resolve_incident.call_args.args[0].source_incident_id == "100"
+        assert known_duplicates == set()
+
 
 class TestReconciliationSummary:
     @pytest.mark.asyncio
