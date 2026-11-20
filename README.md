@@ -83,6 +83,20 @@ the Zabbix frontend — for Apache-based installs this is typically
 `https://zabbix.example.com/zabbix/`, while Nginx-based installs
 usually use `https://zabbix.example.com/`.
 
+### Reconciliation and heartbeats
+
+When `reconciliation.enabled = true` the glue service will contact both
+Zabbix and Argus periodically, at least every `reconciliation.interval`
+seconds. It can then be worthwhile to set `heartbeat_frequency` for the
+source in Argus, to no less than twice the `reconciliation.interval`,
+and never less than 60 seconds. If there is a Zabbix outage, this will
+then trigger a heartbeat incident in Argus if that funxctionlaity has
+been enabled.
+
+If `reconciliation.enabled = false` the glue service is in webhook-only
+mode. We warn against setting `heartbeat_frequency` to anything for
+the source in Argus when in webhook-only mode.
+
 ## Usage
 
 ```bash
